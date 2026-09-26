@@ -57,8 +57,8 @@ describe("messageNumbers", () => {
 });
 
 const result = (over: Partial<ShownResult>): ShownResult => ({
-  toolId: "search.brave_web_search",
-  label: "Web search",
+  toolId: "orders.get_order",
+  label: "Order lookup",
   args: {},
   summary: "",
   items: [],
@@ -90,24 +90,24 @@ describe("buildPools", () => {
       recent: [],
       results: [
         result({
-          toolId: "units.convert_units",
-          numbers: [{ value: 28.89, label: "high today, converted to celsius" }],
+          toolId: "identity.verify_identity",
+          numbers: [{ value: 28.89, label: "order total, converted" }],
           items: [{ title: "Newest item" }],
         }),
         result({
-          toolId: "weather.get_weather",
-          args: { place: "Denver" },
+          toolId: "orders.get_order",
+          args: { order_id: "ORD-1001" },
           numbers: [
-            { value: 78, label: "current temperature in Denver, °F" },
-            { value: 84, label: "high today, °F" },
+            { value: 78, label: "order ORD-1001 total" },
+            { value: 84, label: "order ORD-1001 subtotal" },
           ],
           items: [{ title: "Older item" }],
         }),
       ],
     };
-    const pools = buildPools("whats the current in celsius", state);
+    const pools = buildPools("whats the current total", state);
     expect(pools.numbers.map((n) => n.value)).toEqual([28.89, 78, 84]);
-    expect(pools.text.map((c) => c.value)).toContain("Denver");
+    expect(pools.text.map((c) => c.value)).toContain("ORD-1001");
     expect(pools.items.map((i) => i.value.title)).toEqual(["Newest item"]);
   });
 
@@ -115,20 +115,6 @@ describe("buildPools", () => {
     const n = { value: 72, label: "high today, °F" };
     const state = { recent: [], results: [result({ numbers: [n] }), result({ numbers: [n] })] };
     expect(buildPools("in celsius", state).numbers).toHaveLength(1);
-  });
-
-  it("passes a tool's own targets through untouched", () => {
-    const targets = [
-      {
-        key: "e0",
-        value: { kind: "name" as const, value: "Desk Lamp" },
-        label: "Device: Desk Lamp",
-        source: "Home Assistant",
-      },
-    ];
-    expect(buildPools("turn on the desk lamp", { recent: [] }, targets).homeTargets).toEqual(
-      targets,
-    );
   });
 
   it("offers a pending ask's collected arguments as text candidates", () => {
@@ -147,11 +133,5 @@ describe("buildPools", () => {
       expect.arrayContaining(["jane.smith@example.com", "Jane Smith", "verify my identity"]),
     );
     expect(pools.text.find((c) => c.value === "Jane Smith")?.source).toBe("earlier answer");
-  });
-
-  it("falls back to message phrases when a tool supplies no targets", () => {
-    const pools = buildPools("turn on the desk lamp", { recent: [] });
-    expect(pools.homeTargets.every((t) => t.source === "message")).toBe(true);
-    expect(pools.homeTargets.map((t) => t.value.value)).toContain("desk lamp");
   });
 });

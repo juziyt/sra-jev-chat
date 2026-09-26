@@ -53,7 +53,7 @@ export class Args {
     return value;
   }
 
-  /** A value picked out of a pool (the message, an earlier result, a tool's own names). */
+  /** A value picked out of a pool (the message or an earlier result). */
   pick<C extends Candidate<unknown>>(name: string, pool: C[]): C | undefined {
     const c = this.candidate(name, pool);
     if (c) this.set(name, c.value, c.source, this.key(name));
@@ -87,7 +87,7 @@ export class Args {
     return this.args[name] !== undefined;
   }
 
-  /** Ready to call; pass `args` to send another shape than the flat arguments (`{ tasks: [] }`). */
+  /** Ready to call; pass `args` to send another shape than the flat arguments. */
   ok(args: Record<string, unknown> = this.args): BuildResult {
     return ok(args, this.sources);
   }

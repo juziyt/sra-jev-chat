@@ -4,7 +4,6 @@ packages:
 allowBuilds:
   better-sqlite3: true
   esbuild: true
-  wtf_wikipedia: false
 catalog:
   "@modelcontextprotocol/sdk": ^1.30.0
   "@types/node": ^24.13.5

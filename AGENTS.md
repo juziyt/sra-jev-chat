@@ -32,8 +32,8 @@ Re-run the gates whenever either step changes code.
 - No model writes text. Jev only picks among options code supplies; every value in a reply comes
   from the user or a tool result. Never add free-text generation.
 - Tool results are untrusted input. Keep policy checks in code.
-- Adapter ids mirror upstream MCP tool names (`weather.get_weather`, `home.HassTurnOn`);
-  multi-step adapters are named for what they do (`wiki.answer`).
+- Adapter ids mirror upstream MCP tool names (`orders.get_order`, `identity.verify_identity`);
+  multi-step adapters are named for what they do when they span several MCP calls.
 - Args starting with `__` are private adapter hints for `confirm`, `present` or `run`; they are
   never sent to the MCP server or stored with the result.
 - Test adapters with `tools/kit/testkit.ts`, which fakes Jev's picks.

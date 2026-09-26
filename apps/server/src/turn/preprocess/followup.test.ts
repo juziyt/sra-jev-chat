@@ -18,9 +18,9 @@ describe("follow-ups", () => {
   });
   describe("slotRewrite", () => {
     it("swaps a new date for the previous question's date", () => {
-      expect(slotRewrite("What's on my todo list for today?", "tomorrow")).toEqual({
+      expect(slotRewrite("What's the status of order ORD-1001 for today?", "tomorrow")).toEqual({
         slot: "date",
-        rewrite: "What's on my todo list for tomorrow?",
+        rewrite: "What's the status of order ORD-1001 for tomorrow?",
       });
       expect(slotRewrite("Weather in Denver this weekend", "friday")?.rewrite).toBe(
         "Weather in Denver friday?",

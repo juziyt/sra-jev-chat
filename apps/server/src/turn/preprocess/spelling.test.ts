@@ -75,8 +75,8 @@ describe("checkSpelling", () => {
       recent: [],
       results: [
         {
-          toolId: "search.answer",
-          label: "Web answer",
+          toolId: "identity.verify_identity",
+          label: "Verify identity",
           args: {},
           summary: "",
           items: [{ title: "Scott Tolinski" }],

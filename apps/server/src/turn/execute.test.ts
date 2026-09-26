@@ -9,17 +9,17 @@ let connected = true;
 let respond: (tool: string) => CallToolResult = () => ({ content: [{ type: "text", text: "ok" }] });
 const called: { tool: string; args: Record<string, unknown> }[] = [];
 
-const weatherStatus = {
-  id: "weather",
-  label: "Weather",
+const lookupStatus = {
+  id: "orders",
+  label: "Orders",
   status: "connected",
-  tools: [{ name: "get_weather", inputSchema: { type: "object", properties: { place: {} } } }],
+  tools: [{ name: "get_order", inputSchema: { type: "object", properties: { order_id: {} } } }],
 } as ServerStatus;
 
 vi.mock("../mcp/clients.ts", () => ({
   isConnected: () => connected,
-  disconnectedReason: () => "missing WEATHER_KEY",
-  toolSpecOf: (_server: string, name: string) => weatherStatus.tools.find((t) => t.name === name),
+  disconnectedReason: () => "missing KEY",
+  toolSpecOf: (_server: string, name: string) => lookupStatus.tools.find((t) => t.name === name),
   callTool: async (_server: string, tool: string, args: Record<string, unknown>) => {
     called.push({ tool, args });
     return { result: respond(tool), ms: 4 };
@@ -27,10 +27,10 @@ vi.mock("../mcp/clients.ts", () => ({
 }));
 
 const base = {
-  id: "weather.get_weather",
-  server: "weather",
-  mcpName: "get_weather",
-  label: "Weather",
+  id: "orders.get_order",
+  server: "orders",
+  mcpName: "get_order",
+  label: "Order lookup",
   description: "",
   examples: [],
   questions: () => ({}),
@@ -40,14 +40,14 @@ const base = {
 const single = {
   ...base,
   present: (result: CallToolResult) => ({
-    text: "Sunny",
+    text: "Shipped",
     card: { type: "error", message: "unused" },
     lastResult: { summary: String(result.content.length), items: [], numbers: [] },
   }),
 } as unknown as SingleStepAdapter;
 
 const trace = { usedQuestions: [], decision: { outcome: "call" as const, reason: "test" } };
-const sources = [{ name: "place", value: "Seattle", source: "message" }];
+const sources = [{ name: "order_id", value: "ORD-1001", source: "message" }];
 
 describe("execute", () => {
   beforeEach(() => {
@@ -58,9 +58,9 @@ describe("execute", () => {
 
   it("replies with an error when the server isn't connected", async () => {
     connected = false;
-    const out = await execute(single, { place: "Seattle" }, sources, { recent: [] }, trace);
+    const out = await execute(single, { order_id: "ORD-1001" }, sources, { recent: [] }, trace);
 
-    expect(out.text).toBe("Weather isn't connected (missing WEATHER_KEY).");
+    expect(out.text).toBe("Orders isn't connected (missing KEY).");
     expect(out.trace.decision).toMatchObject({ outcome: "error" });
     expect(called).toHaveLength(0);
   });
@@ -68,29 +68,29 @@ describe("execute", () => {
   it("drops `__` hints and undeclared args, and keeps the result for follow-ups", async () => {
     const out = await execute(
       single,
-      { place: "Seattle", extra: 1, __hint: true },
+      { order_id: "ORD-1001", extra: 1, __hint: true },
       sources,
       { recent: [] },
       trace,
     );
 
-    expect(called).toEqual([{ tool: "get_weather", args: { place: "Seattle" } }]);
-    expect(out.text).toBe("Sunny");
-    expect(out.trace.call).toMatchObject({ tool: "get_weather", ms: 4, isError: false });
+    expect(called).toEqual([{ tool: "get_order", args: { order_id: "ORD-1001" } }]);
+    expect(out.text).toBe("Shipped");
+    expect(out.trace.call).toMatchObject({ tool: "get_order", ms: 4, isError: false });
     expect(out.trace.args).toBe(sources);
     expect(out.state.results?.[0]).toMatchObject({
-      toolId: "weather.get_weather",
-      args: { place: "Seattle" },
+      toolId: "orders.get_order",
+      args: { order_id: "ORD-1001" },
       summary: "1",
     });
   });
 
   it("reports a tool error in the tool's own words", async () => {
-    respond = () => ({ isError: true, content: [{ type: "text", text: "Unknown place" }] });
-    const out = await execute(single, { place: "Nowhere" }, sources, { recent: [] }, trace);
+    respond = () => ({ isError: true, content: [{ type: "text", text: "Unknown order" }] });
+    const out = await execute(single, { order_id: "NOPE" }, sources, { recent: [] }, trace);
 
-    expect(out.text).toBe("Weather failed: Unknown place");
-    expect(out.card).toEqual({ type: "error", message: "Unknown place" });
+    expect(out.text).toBe("Order lookup failed: Unknown order");
+    expect(out.card).toEqual({ type: "error", message: "Unknown order" });
     expect(out.trace.call?.isError).toBe(true);
   });
 
@@ -98,9 +98,9 @@ describe("execute", () => {
     respond = () => {
       throw new Error("socket closed");
     };
-    const out = await execute(single, { place: "Seattle" }, sources, { recent: [] }, trace);
+    const out = await execute(single, { order_id: "ORD-1001" }, sources, { recent: [] }, trace);
 
-    expect(out.text).toBe("Weather failed: socket closed");
+    expect(out.text).toBe("Order lookup failed: socket closed");
     expect(out.trace.call).toMatchObject({ ms: 0, isError: true, result: "Error: socket closed" });
   });
 
@@ -154,7 +154,7 @@ describe("execute", () => {
     };
     const out = await execute(multi, {}, sources, { recent: [] }, trace);
 
-    expect(out.text).toBe("Weather failed: timeout");
+    expect(out.text).toBe("Order lookup failed: timeout");
     expect(out.trace.steps?.[1].call).toMatchObject({ tool: "fetch", ms: 0, isError: true });
     expect(out.trace.call).toMatchObject({ tool: "search", ms: 4 });
   });

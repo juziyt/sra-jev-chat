@@ -102,3 +102,22 @@ export const SuggestionCard: CardComponent<"suggestion"> = ({ card }) => {
     </div>
   );
 };
+
+/** Each tool server with its connection status and example prompts. */
+export const CapabilitiesCard: CardComponent<"capabilities"> = ({ card }) => (
+  <div className="grid gap-2 sm:grid-cols-2">
+    {card.servers.map((s) => (
+      <div key={s.label} className="rounded-lg bg-base-200 p-2 text-sm">
+        <div className="flex items-center gap-2 font-semibold">
+          <span className={`status ${s.connected ? "status-success" : "status-warning"}`} />{" "}
+          {s.label}
+        </div>
+        {s.examples.map((e) => (
+          <div key={e} className="text-base-content/70">
+            “{e}”
+          </div>
+        ))}
+      </div>
+    ))}
+  </div>
+);

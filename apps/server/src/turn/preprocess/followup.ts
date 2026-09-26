@@ -3,7 +3,7 @@ import nlp from "compromise";
 
 import { NUMBER_RE } from "../../jev/pools.ts";
 import type { BuiltQuestion } from "../../jev/questions.ts";
-import { isPlace } from "../../tools/index.ts";
+import { isPlace } from "./places.ts";
 
 const MAX_FOLLOW_UP_WORDS = 6;
 const MAX_BARE_WORDS = 3;

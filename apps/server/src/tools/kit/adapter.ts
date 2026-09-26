@@ -2,7 +2,6 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { EntryType } from "@typesafe-ai/sdk";
 import type { z } from "zod";
 
-import { ASSISTANT_TZ } from "../../config.ts";
 import type { Pools } from "../../jev/pools.ts";
 import type { Answers, BuiltQuestion } from "../../jev/questions.ts";
 import type { ArgTrace, Card, JevAnswerJson, ServerId, ShownResult } from "../../shared/types.ts";
@@ -81,18 +80,6 @@ export function textOf(result: CallToolResult) {
     .join("\n");
 }
 
-/** Each text block of a tool result that parses as JSON; the rest are skipped. */
-export function jsonTexts(result: CallToolResult): any[] {
-  const out: any[] = [];
-  for (const c of result.content) {
-    if (c.type !== "text") continue;
-    try {
-      out.push(JSON.parse(c.text));
-    } catch {}
-  }
-  return out;
-}
-
 /** A tool's `structuredContent` parsed with `schema`, or undefined (with a warning) on mismatch. */
 export function readResult<T>(
   result: CallToolResult,
@@ -115,25 +102,6 @@ export function rawFallback(result: CallToolResult): Presented {
   return { text, card: { type: "error", message: text } };
 }
 
-/** A built argument as display text: primitives as-is, nullish as "", anything else as JSON. */
-export function argText(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (value === undefined || value === null) return "";
-  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
-    return String(value);
-  }
-  return JSON.stringify(value) ?? "";
-}
-
-/** A URL's hostname without a leading `www.`, or the input unchanged when it isn't a valid URL. */
-export function hostOf(url: string) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
-}
-
 /** A `build()` result that is ready to call the tool with `args`. */
 export function ok(args: Record<string, unknown>, sources: ArgTrace[]): BuildResult {
   return { ok: true, args, sources };
@@ -147,21 +115,4 @@ export function missing(
   sources: ArgTrace[],
 ): BuildResult {
   return { ok: false, missing: name, prompt, partial, sources };
-}
-
-/**
- * Today in ASSISTANT_TZ as YYYY-MM-DD, offset by whole days. The offset is applied to a UTC date so
- * a DST boundary can't skip or repeat a day.
- */
-export function localDate(offsetDays = 0) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: ASSISTANT_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const part = (type: string) => Number(parts.find((p) => p.type === type)!.value);
-  const d = new Date(Date.UTC(part("year"), part("month") - 1, part("day")));
-  d.setUTCDate(d.getUTCDate() + offsetDays);
-  return d.toISOString().slice(0, 10);
 }

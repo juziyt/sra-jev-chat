@@ -39,7 +39,7 @@ its question types:
 | **Choice** | "Which of these tools fits?"              | one option key, with probabilities for all of them |
 | **Noul**   | "Does the user say when the task is due?" | a probability that the answer is yes               |
 
-Jev does not produce text. Every text argument, such as a search query, a task title or a city, is
+Jev does not produce text. Every text argument, such as an order id, a name or an email, is
 copied from the user's message, the conversation or an earlier tool result.
 
 ## Run it
@@ -56,40 +56,24 @@ pnpm dev               # server :8787, web http://localhost:5173
 
 Only `TYPESAFE_API_KEY` is required. Jev is a paid API: get a key from the
 [TypeSafe console](https://console.typesafe.ai/settings/keys). Without one the app still starts, but
-every message gets an error reply. Other servers without a key show as "no key" in the sidebar and
-everything else keeps working, so weather, units, Wikipedia, recipes, orders and identity need
-nothing beyond the Jev key.
+every message gets an error reply. Orders and identity need nothing beyond the Jev key.
 
 The API has no login, so it listens on `127.0.0.1` only and refuses requests addressed to, or sent
 from a page on, any host other than `localhost`, `127.0.0.1` or `[::1]`. Open the app on this
 machine. This is a dev setup: `pnpm build` only builds the web app, and nothing serves the built
 files.
 
-| Server                                                     | Needs                                                    |
-| ---------------------------------------------------------- | -------------------------------------------------------- |
-| Weather (`packages/mcp-weather`, Open-Meteo)               | nothing                                                  |
-| Units & maths (`packages/mcp-units`)                       | nothing                                                  |
-| Wikipedia (`packages/mcp-wiki`)                            | nothing                                                  |
-| Orders (`packages/mcp-orders`, sample catalog)             | nothing                                                  |
-| Identity (`packages/mcp-identity`, sample catalog)         | nothing                                                  |
-| Recipes (`packages/mcp-recipes`, TheMealDB)                | nothing (public test key; `MEALDB_API_KEY` for your own) |
-| Brave Search (`@brave/brave-search-mcp-server`)            | `BRAVE_API_KEY`                                          |
-| Todoist (`@doist/todoist-ai`)                              | `TODOIST_API_KEY`                                        |
-| Home Assistant (its MCP Server integration, at `/api/mcp`) | `HASS_URL`, `HASS_TOKEN`                                 |
-| Jev itself                                                 | `TYPESAFE_API_KEY`                                       |
+| Server                                             | Needs              |
+| -------------------------------------------------- | ------------------ |
+| Orders (`packages/mcp-orders`, sample catalog)     | nothing            |
+| Identity (`packages/mcp-identity`, sample catalog) | nothing            |
+| Jev itself                                         | `TYPESAFE_API_KEY` |
 
 Some things to try:
 
-- What's the weather in Denver tomorrow?
-- 350F in celsius, or: What's a 20% tip on $64?
-- How tall is Mount Rainier?
-- Something vegan for dinner, then: How do I make the first one?
 - Where is order ORD-1001?
 - Refund order ORD-1001, it arrived damaged
 - Verify Jane Smith at jane.smith@example.com
-- Who hosts the Syntax podcast?
-- Remind me to renew my passport tomorrow
-- Turn off the kitchen lights
 
 Order lookup uses a built-in sample catalog: `ORD-1001` (shipped), `ORD-1002` (delivered),
 `ORD-1003` (processing), `ORD-1042` (cancelled). A bare number like `1001` works too. Refunds
@@ -116,8 +100,7 @@ pnpm format        # oxfmt; format:check to only check
 pnpm tools:list    # what each connected MCP server exposes (add -- --schema for input schemas)
 ```
 
-This app only works in English. See `ASSISTANT_TZ` and `DEFAULT_UNITS` in `.env.example` for the
-locale settings you can configure.
+This app only works in English.
 
 ## How it works
 
@@ -148,8 +131,7 @@ flowchart TD
 
   subgraph Tools[Tools]
     direction LR
-    Weather ~~~ Units[Units and maths] ~~~ Wikipedia ~~~ Recipes ~~~ Orders
-    Search[Web search] ~~~ Todoist ~~~ Home[Home Assistant] ~~~ Identity
+    Orders ~~~ Identity
   end
 ```
 
@@ -224,7 +206,7 @@ inspector shows the original message, what changed and who decided.
 ```mermaid
 flowchart TD
   Msg([Typed message]) --> Known{Known word?}
-  Known -->|"yes: dictionary, name, place,<br/>device or recent result"| Checked[Checked message]
+  Known -->|"yes: dictionary, name, place,<br/>or recent result"| Checked[Checked message]
   Known -->|no| Sure{One sure fix?}
   Sure -->|"common misspelling or<br/>only close match"| Fix[Fixed in code]
   Sure -->|several suggestions| SpellJev{{"Jev: which fix, or keep it?"}}
@@ -245,8 +227,7 @@ either Jev request fails the step is skipped and the message goes on as it was.
 
 **Spell check** (`preprocess/spelling.ts`) looks words up in cspell's English, company and software
 dictionaries. It skips short words, anything compromise tags as a name, acronym, link or hashtag,
-[place names](#names-and-places), Home Assistant device and area names, and words from recent
-results. Then, for each unknown word:
+[place names](#names-and-places), and words from recent results. Then, for each unknown word:
 
 - a listed common misspelling with a single fix, or a lowercase word with exactly one suggestion
   one edit away, is fixed without Jev
@@ -257,8 +238,8 @@ results. Then, for each unknown word:
 one ("what about Boston?", "and tomorrow?", "the second one") when nothing is pending:
 
 - if the new content is a date (chrono), a number or a place, and the previous question has exactly
-  one of that kind, it's swapped in without Jev: "weather in Denver?" then "what about Boston?"
-  becomes "weather in Boston?"
+  one of that kind, it's swapped in without Jev: "search for events in Denver?" then "what about
+  Boston?" becomes "search for events in Boston?"
 - otherwise code writes every rewrite of the previous question that replaces a one- or two-word
   span with the new content, or appends it, and Jev picks one or keeps the message as it is
 
@@ -270,18 +251,18 @@ Three libraries read the text before Jev sees it:
 [cspell-lib](https://github.com/streetsidesoftware/cspell). None of them writes anything: they find
 words, spans and suggestions, which code either applies as a sure fix or offers to Jev as options.
 
-| Library     | Finds                                                                         | Used by                                     |
-| ----------- | ----------------------------------------------------------------------------- | ------------------------------------------- |
-| compromise  | names, acronyms and links; places; numbers in words ("twenty six"); sentences | spell check, follow-ups, pools, web answers |
-| chrono-node | date phrases ("next Friday", "tomorrow at 5")                                 | pools, follow-ups, web answers              |
-| cspell-lib  | known words, common misspellings, suggestions                                 | spell check                                 |
+| Library     | Finds                                                                         | Used by                        |
+| ----------- | ----------------------------------------------------------------------------- | ------------------------------ |
+| compromise  | names, acronyms and links; places; numbers in words ("twenty six"); sentences | spell check, follow-ups, pools |
+| chrono-node | date phrases ("next Friday", "tomorrow at 5")                                 | pools, follow-ups              |
+| cspell-lib  | known words, common misspellings, suggestions                                 | spell check                    |
 
 ### One request, many questions
 
 ```mermaid
 flowchart LR
   Msg[Message, recent chat, shown results, pending action] -->|what's being asked| Jev{{Jev}}
-  Options[Pools: message spans, numbers, earlier results, home devices] -->|choices to pick from| Jev
+  Options[Pools: message spans, numbers, earlier results] -->|choices to pick from| Jev
   Jev -->|what the message is doing| Kind[Request kind]
   Jev -->|which tool| Tool[Chosen tool]
   Jev -->|details for every tool| Details[All tool details]
@@ -298,87 +279,16 @@ unprompted request is `buildAssistRequest`: `copilot_move` and `observation` ins
 
 The options come from `buildPools` in `apps/server/src/jev/pools.ts`: date phrases, word spans
 and numbers from the message; titles and items ("the first one") from the newest result; numbers
-and short arguments from the last three results; and the message behind a pending question. The
-smart-home devices come from `homeTargetPool` in `tools/home/catalog.ts`. Jev sees each option
-under a key like `t3`; code maps the key back to its value and `Args` records where it came from.
-Jev can only pick from these pools, so they are the only values that can end up in a text
-argument.
-
-### A multi-step tool
-
-```mermaid
-sequenceDiagram
-  actor User
-  participant Server
-  participant Jev
-  participant Wiki as Wikipedia
-
-  User->>Server: How tall is Mount Rainier?
-  Server->>Jev: Which tool and topic?
-  Jev-->>Server: Wikipedia, Mount Rainier
-  Server->>Wiki: Search
-  Wiki-->>Server: Matching articles
-  Server->>Jev: Which article?
-  Jev-->>Server: Mount Rainier
-  Server->>Wiki: Read it
-  Wiki-->>Server: Infobox fields and sentences
-  Server->>Jev: Which line answers it?
-  Jev-->>Server: Line 3
-  Server-->>User: Quote and link
-```
-
-Some tools need more than one call. They are a `MultiStepAdapter`: they implement `run()` instead
-of `present()` and drive their own sequence. See `wikiFact` in
-**`apps/server/src/tools/wiki/wiki.ts`** and `runMultiStep` in `turn/execute.ts`. The reply quotes
-the chosen line word for word. If the article is a disambiguation page, the reply lists its meanings
-instead, and the user can pick one next turn.
-
-### Answering from the web
-
-```mermaid
-sequenceDiagram
-  actor User
-  participant Server
-  participant Jev
-  participant Brave as Brave Search
-
-  User->>Server: Who hosts the Syntax podcast?
-  Server->>Jev: Which tool, query and kind of answer?
-  Jev-->>Server: Web answer, "hosts the Syntax podcast", people
-  Server->>Brave: Search
-  Brave-->>Server: Five results
-  Note over Server: Split snippets into sentences,<br/>find candidate names
-  Server->>Jev: Is each name an answer? Which sentence proves it?
-  Jev-->>Server: Two names yes, sentence 4
-  Server-->>User: Names, evidence and sources
-```
-
-`webAnswer` in `tools/search/search.ts` is the other multi-step tool. The main request also picks
-the kind of answer wanted: people, a number, a date, a place, or something else. Code finds
-candidates of that kind in the search snippets, then a single Jev request judges them and picks the
-sentence that proves the answer. People get one Noul each, since more than one can be right; the
-other kinds get one Choice. For "something else" there are no candidates and Jev only picks the
-sentence.
+and short arguments from the last three results; and the message behind a pending question. Jev
+sees each option under a key like `t3`; code maps the key back to its value and `Args` records
+where it came from. Jev can only pick from these pools, so they are the only values that can end
+up in a text argument.
 
 ### Names and places
 
-The candidate finders in `tools/search/extract.ts` are plain code (regexes, chrono-node and
-compromise). They cast a wide net and leave the judging to Jev:
-
-| Kind   | Candidates                                                                        |
-| ------ | --------------------------------------------------------------------------------- |
-| People | two- and three-word windows of capitalised runs, without non-name words or places |
-| Number | numbers, with any currency symbol and unit ("14,406 ft", "$4.5 million")          |
-| Date   | full dates via chrono-node, plus bare years and month-years                       |
-| Place  | capitalised spans of one to three words, known places ranked first                |
-
-Each list is ranked by how often it appears across the sources. Accepted people that overlap
-("Wes Bos Scott" and "Wes Bos") are deduplicated by score.
-
-"Known places" is `isPlace` in `tools/search/places.ts`: about 1,900 countries, capitals and
-subdivisions in `places.txt` (compared without case or accents), plus shapes like "Mount …",
-"Lake …" and "… County". The same check keeps spell check off place names, lets a follow-up swap
-one place for another, and keeps places out of the people list.
+`isPlace` in `turn/preprocess/places.ts` holds about 1,900 countries, capitals and subdivisions in
+`places.txt` (compared without case or accents), plus shapes like "Mount …", "Lake …" and
+"… County". Spell check skips those names, and a short follow-up can swap one place for another.
 
 ## Assist
 
@@ -492,8 +402,8 @@ test names the option it wants and asserts on the arguments that come out. See `
 
 Two conventions to be aware of:
 
-- **Adapter ids mirror upstream MCP tool names**: `weather.get_weather`, `todoist.add-tasks`,
-  `home.HassTurnOn`. Multi-step tools are named for what they do (`wiki.answer`, `search.answer`).
+- **Adapter ids mirror upstream MCP tool names**: `orders.get_order`, `identity.verify_identity`.
+  Multi-step tools are named for what they do when they span several MCP calls.
 - **An argument starting with `__`** is a private hint for the adapter: it feeds `confirm`,
   `present` or `run`, is never sent to the MCP server, and isn't stored with the result.
   Single-step calls also drop any argument the server's input schema doesn't declare
@@ -506,8 +416,8 @@ apps/server/
   drizzle/          generated SQL migrations, applied at boot
   src/
     app.ts          routes (exports AppType for the web app's RPC client)
-    config.ts       thresholds, locale, history sizes (the shared tuning knobs)
-    index.ts        boot: connect MCP servers, load the HA catalog, serve
+    config.ts       thresholds and history sizes (the shared tuning knobs)
+    index.ts        boot: connect MCP servers and serve
     db/             drizzle schema and the SQLite connection; runs the migrations
     jev/
       client.ts     askJev, the single entry point for Jev requests
@@ -520,7 +430,7 @@ apps/server/
       request.ts    the main request: the conversation as Jev sees it, and every question
       execute.ts    call the tool (or drive a multi-step one) and present the result
       outcome.ts    the reply type a turn returns
-      preprocess/   the rewrites that run first: preprocess.ts runs spelling.ts and followup.ts
+      preprocess/   spelling, follow-ups, and the place-name list
     mcp/clients.ts  MCP server registry and connections
     shared/         types shared with the web app: servers, state, cards, trace
     lib/errors.ts   the message of anything thrown
@@ -528,8 +438,7 @@ apps/server/
     tools/
       index.ts      the adapter registry
       kit/          adapter.ts / args.ts / testkit.ts, shared by every adapter
-      <server>/     one folder per MCP server; home/catalog.ts holds the device list, search/ the
-                    candidate finders and places
+      <server>/     one folder per MCP server
 apps/web/src/
   main.tsx              routes and providers
   api.ts                the Hono RPC client
@@ -544,17 +453,17 @@ apps/web/src/
   components/ui/        generic UI pieces
 packages/
   mcp-kit/          helpers the MCP servers share
-  mcp-*/            MCP servers written for this demo: weather, units, wiki, recipes, orders, identity
+  mcp-*/            MCP servers written for this demo: orders, identity
 ```
 
 ## Notes
 
 - `pnpm --filter @jev-chat/server db:generate` after changing `db/schema.ts`; the generated SQL in
   `apps/server/drizzle/` is committed and applied at boot.
-- `pnpm --filter @jev-chat/server places:build` regenerates `tools/search/places.txt` after bumping
-  `provinces` or `countries-list`.
-- Tool results are untrusted input: a web page can contain text aimed at the assistant. Jev can't be
-  talked into writing a tool call, but keep the policy checks in code.
+- `pnpm --filter @jev-chat/server places:build` regenerates `turn/preprocess/places.txt` after
+  bumping `provinces` or `countries-list`.
+- Tool results are untrusted input. Jev can't be talked into writing a tool call, but keep the
+  policy checks in code.
 
 ## FAQ
 
@@ -566,16 +475,14 @@ what the user typed or what a tool returned.
 
 ### Is one of the tools an LLM, for the explanations?
 
-No. The Wikipedia answers are quotes. Jev picks the topic, then the article, then the line of the
-article that answers the question (a sentence or an infobox field, from up to the first 120 lines).
-The reply quotes that line word for word and links the article. The idea comes from TypeSafe's
-[line-by-line search](https://docs.typesafe.ai/cookbooks/semantic_find) cookbook.
+No. Every reply is built by code from tool data or the user's text. There is no generative model
+in the tool path.
 
 ### How does it pick the tool and the arguments?
 
 One Jev request per message. A Choice lists every tool with a description and examples. Each tool
-adds its own questions, whose options are spans and numbers from the message, earlier results and,
-for the smart home, known devices. Code maps each pick back to its value. See
+adds its own questions, whose options are spans and numbers from the message and earlier results.
+Code maps each pick back to its value. See
 [One request, many questions](#one-request-many-questions).
 
 ### What happens when it can't decide?
@@ -586,9 +493,8 @@ talk and requests no tool covers get a fixed reply listing what it can do.
 
 ### What if it picks the wrong thing and changes something?
 
-It can: routing is a model's judgment, not a rule. So adding or completing a Todoist task, opening
-a refund, and any Home Assistant action that could reach a lock, a cover or an unknown device,
-shows a confirm card with its arguments first. Only a yes runs it.
+It can: routing is a model's judgment, not a rule. Opening a refund shows a confirm card with its
+arguments first. Only a yes runs it.
 
 ### "No hallucinations", really?
 
@@ -600,13 +506,13 @@ you can see why.
 ### Can it reason or deduce?
 
 No. Jev makes each judgment in one pass. Anything that needs working out goes to code or a tool:
-maths and unit conversions go to the units tool, and dates are worked out in code.
+dates are worked out in code.
 
-### Can it handle compound requests, like "turn the light green, then red after 5 seconds"?
+### Can it handle compound requests, like "look up the order and refund it"?
 
-Chat still runs one tool per message, and there's no timer tool. Assist's unprompted left turns
-are the exception: code walks identity → order lookup and stops at refund confirmation when the
-inputs are ready. Splitting an arbitrary "do A then B" in chat would still need its own step.
+Chat still runs one tool per message. Assist's unprompted left turns are the exception: code
+walks identity → order lookup and stops at refund confirmation when the inputs are ready.
+Splitting an arbitrary "do A then B" in chat would still need its own step.
 
 ### Isn't this just Siri? Every response is pre-coded.
 
@@ -667,17 +573,7 @@ The explainer video [wtf is jev?](https://www.youtube.com/watch?v=QbYBRjOaGOo),
   code finds the candidates, Jev picks
 - [Date extraction](https://docs.typesafe.ai/cookbooks/date_extraction_cookbook): Jev picks the date
   parts, code does the calendar maths
-- [Line-by-line search](https://docs.typesafe.ai/cookbooks/semantic_find): the Wikipedia quotes
-- [Smart home assistant demo](https://docs.typesafe.ai/demos/smart-home): the Home Assistant tool
-  and the inspector
 
 ### MCP servers and APIs
 
 - [MCP tools specification](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
-- [Brave Search MCP server](https://github.com/brave/brave-search-mcp-server)
-- [Todoist MCP server](https://github.com/Doist/todoist-mcp)
-- Home Assistant's [MCP Server](https://www.home-assistant.io/integrations/mcp_server/) and
-  [Demo](https://www.home-assistant.io/integrations/demo/) integrations
-- [Open-Meteo](https://open-meteo.com/), the
-  [MediaWiki Action API](https://www.mediawiki.org/wiki/API:Main_page) and
-  [TheMealDB](https://www.themealdb.com/api.php)

@@ -83,7 +83,7 @@ export class Answers {
   }
 }
 
-/** Question and option keys stay simple identifiers: "todoist.add-tasks" → "todoist_add_tasks" */
+/** Question and option keys stay simple identifiers: "orders.get_order" → "orders_get_order" */
 export function safeKey(id: string): string {
   return id.replace(/[^a-zA-Z0-9]+/g, "_");
 }

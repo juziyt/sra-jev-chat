@@ -33,7 +33,7 @@ export const getOrder: SingleStepAdapter = {
   mcpName: "get_order",
   label: "Order lookup",
   description:
-    "Look up a store purchase / order by its order id: status, items, totals and shipping (not a restaurant order, not adding a todo)",
+    "Look up a store purchase / order by its order id: status, items, totals and shipping",
   examples: ["Where is order ORD-1001?", "Look up order 1003"],
   questions: (p) => ({
     order_id: candidateQ(

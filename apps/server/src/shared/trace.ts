@@ -19,8 +19,8 @@ export interface ArgTrace {
   name: string;
   value: unknown;
   /**
-   * Where the value came from: "message", "earlier result", "Home Assistant", "option", or
-   * "default" (the code's fallback when Jev picked none), …
+   * Where the value came from: "message", "earlier result", "option", or "default" (the
+   * code's fallback when Jev picked none), …
    */
   source: string;
   questionKey?: string;
@@ -102,7 +102,7 @@ export interface Trace {
   jev?: JevTrace;
   /** Question keys whose answers the code actually used; the rest were speculative. */
   usedQuestions: string[];
-  /** Question key → (option key → label), e.g. weather_get_weather__place → { t3: "Seattle" }. */
+  /** Question key → (option key → label), e.g. orders_get_order__order_id → { t3: "ORD-1001" }. */
   optionLabels?: Record<string, Record<string, string>>;
   decision: {
     outcome: Outcome;

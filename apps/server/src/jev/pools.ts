@@ -16,9 +16,6 @@ export interface NumberCandidate extends Candidate<number> {
   shown?: ShownNumber;
 }
 
-/** A device or room a smart-home tool can act on. */
-export type HomeTarget = { kind: "name" | "area"; value: string; domain?: string };
-
 /** The options Jev is allowed to pick from. */
 export interface Pools {
   /**
@@ -30,7 +27,6 @@ export interface Pools {
   numbers: NumberCandidate[];
   /** Items of the newest result only, so "the first one" has one meaning. */
   items: Candidate<ShownItem>[];
-  homeTargets: Candidate<HomeTarget>[];
 }
 
 const STOP = new Set(
@@ -120,11 +116,7 @@ export function messageNumbers(message: string): number[] {
 }
 
 /** Everything Jev may choose from this turn. */
-export function buildPools(
-  message: string,
-  state: ConversationState,
-  homeTargets: Candidate<HomeTarget>[] = [],
-): Pools {
+export function buildPools(message: string, state: ConversationState): Pools {
   const spans = messageSpans(message);
   const text: Candidate[] = [];
   const seenText = new Set<string>();
@@ -181,14 +173,5 @@ export function buildPools(
     source: "earlier result",
   }));
 
-  const targets = homeTargets.length
-    ? homeTargets
-    : spans.map((s, i) => ({
-        key: `a${i}`,
-        value: { kind: "name" as const, value: s },
-        label: s,
-        source: "message",
-      }));
-
-  return { text, numbers, items, homeTargets: targets };
+  return { text, numbers, items };
 }

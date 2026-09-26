@@ -5,10 +5,8 @@ import type { ServerStatus } from "../mcp/clients.ts";
 /** Question key → the option (by key or label) the fake Jev below picks. */
 const wanted: Record<string, string> = {
   request_kind: "new_request",
-  tool: "weather_get_weather",
-  weather_get_weather__place: "Seattle",
-  weather_get_weather__when: "tomorrow",
-  weather_get_weather__units: "fahrenheit",
+  tool: "orders_get_order",
+  orders_get_order__order_id: "ORD-1001",
 };
 
 /** Unlisted questions get their "leave it" option when they have one, else their last option. */
@@ -53,57 +51,52 @@ vi.mock("@typesafe-ai/sdk", () => ({
   },
 }));
 
-const forecast = {
-  text: "Tomorrow in Seattle: high 61°F, low 48°F, light rain.",
-  when: "tomorrow",
-  units: "fahrenheit",
-  degreeSymbol: "°F",
-  place: { name: "Seattle", displayName: "Seattle, Washington, United States" },
-  current: { temperature: 55, feelsLike: 53, condition: "Overcast", windSpeed: 6, humidity: 81 },
-  days: [
-    {
-      date: "2026-09-18",
-      label: "Friday, Sep 18",
-      condition: "Light rain",
-      high: 61,
-      low: 48,
-      precipitationChance: 70,
-      windMax: 11,
-    },
-  ],
+const order = {
+  text: "ORD-1001 · Shipped · 1 item · $90.32 · Denver, CO",
+  id: "ORD-1001",
+  status: "shipped",
+  placedAt: "2026-09-20",
+  items: [{ name: "Wireless headphones", quantity: 1, price: 79 }],
+  subtotal: 79,
+  tax: 6.32,
+  shippingCost: 5,
+  total: 90.32,
+  currency: "USD",
+  destination: "Denver, CO",
+  tracking: "1Z999AA10123456784",
+  eta: "2026-09-26",
 };
 
 const calls: { server: string; tool: string; args: Record<string, unknown> }[] = [];
 
-const weatherStatus = {
-  id: "weather",
-  label: "Weather",
+const ordersStatus = {
+  id: "orders",
+  label: "Orders",
   status: "connected",
   tools: [
     {
-      name: "get_weather",
-      inputSchema: { type: "object", properties: { place: {}, when: {}, units: {} } },
+      name: "get_order",
+      inputSchema: { type: "object", properties: { order_id: {} } },
     },
   ],
 } as ServerStatus;
 
 vi.mock("../mcp/clients.ts", () => ({
   isConnected: () => true,
-  serverStatuses: (): ServerStatus[] => [weatherStatus],
-  statusOf: (id: string) => (id === "weather" ? weatherStatus : undefined),
+  serverStatuses: (): ServerStatus[] => [ordersStatus],
+  statusOf: (id: string) => (id === "orders" ? ordersStatus : undefined),
   disconnectedReason: () => "not connected",
   toolSpecOf: (server: string, name: string) =>
-    server === "weather" ? weatherStatus.tools.find((t) => t.name === name) : undefined,
+    server === "orders" ? ordersStatus.tools.find((t) => t.name === name) : undefined,
   callTool: async (server: string, tool: string, args: Record<string, unknown>) => {
     calls.push({ server, tool, args });
     return {
-      result: { content: [{ type: "text", text: forecast.text }], structuredContent: forecast },
+      result: { content: [{ type: "text", text: order.text }], structuredContent: order },
       ms: 3,
     };
   },
   connectAll: async () => [],
   closeAll: async () => {},
-  callHomeTool: async () => ({ content: [{ type: "text", text: "" }] }),
 }));
 
 describe("handleTurn", () => {
@@ -111,42 +104,38 @@ describe("handleTurn", () => {
     process.env.TYPESAFE_API_KEY = "test";
   });
 
-  it("routes a weather request, fills args from spans, and calls the tool", async () => {
+  it("routes an order lookup, fills args from spans, and calls the tool", async () => {
     const { handleTurn } = await import("./turn.ts");
     const out = await handleTurn(
-      { kind: "message", text: "What's the weather in Seattle tomorrow?", spellcheck: false },
+      { kind: "message", text: "Where is order ORD-1001?", spellcheck: false },
       { recent: [] },
     );
 
     expect(out.trace.decision.outcome).toBe("call");
-    expect(out.trace.call?.args).toMatchObject({
-      place: "Seattle",
-      when: "tomorrow",
-      units: "fahrenheit",
-    });
-    expect(out.card?.type).toBe("weather");
-    expect(out.trace.usedQuestions).toContain("weather_get_weather__place");
-    expect(calls.at(-1)).toMatchObject({ server: "weather", tool: "get_weather" });
+    expect(out.trace.call?.args).toMatchObject({ order_id: "ORD-1001" });
+    expect(out.card?.type).toBe("order");
+    expect(out.trace.usedQuestions).toContain("orders_get_order__order_id");
+    expect(calls.at(-1)).toMatchObject({ server: "orders", tool: "get_order" });
   });
 
-  it("carries the result's numbers into state so a follow-up can convert them", async () => {
+  it("carries the result's numbers into state so a follow-up can reuse them", async () => {
     const { handleTurn } = await import("./turn.ts");
     const out = await handleTurn(
-      { kind: "message", text: "What's the weather in Seattle tomorrow?", spellcheck: false },
+      { kind: "message", text: "Where is order ORD-1001?", spellcheck: false },
       { recent: [] },
     );
 
-    expect(out.state.results?.[0].numbers.map((n) => n.value)).toContain(61);
+    expect(out.state.results?.[0].numbers.map((n) => n.value)).toContain(90.32);
   });
 
   it("cancels a pending confirmation without asking Jev", async () => {
     const { handleTurn } = await import("./turn.ts");
     const pending = {
       type: "confirm" as const,
-      toolId: "todoist.add-tasks",
-      args: { tasks: [{ content: "buy milk" }] },
+      toolId: "orders.initiate_refund",
+      args: { order_id: "ORD-1001", reason: "arrived damaged" },
       argSources: [],
-      prompt: 'Add a task with content="buy milk"',
+      prompt: 'Initiate refund with order_id="ORD-1001"',
     };
     const out = await handleTurn({ kind: "action", type: "cancel" }, { recent: [], pending });
 
@@ -170,12 +159,12 @@ describe("handleTurn", () => {
     const { handleTurn } = await import("./turn.ts");
     const pending = {
       type: "choose" as const,
-      options: ["weather.get_weather"],
-      message: "weather in Seattle",
+      options: ["orders.get_order"],
+      message: "Where is order ORD-1001?",
       prompt: "",
     };
     const out = await handleTurn(
-      { kind: "action", type: "pick", value: "todoist.complete-tasks" },
+      { kind: "action", type: "pick", value: "identity.verify_identity" },
       { recent: [], pending },
     );
 
@@ -185,10 +174,10 @@ describe("handleTurn", () => {
 
   const confirmable = {
     type: "confirm" as const,
-    toolId: "weather.get_weather",
-    args: { place: "Seattle", when: "tomorrow", units: "fahrenheit" },
+    toolId: "orders.get_order",
+    args: { order_id: "ORD-1001" },
     argSources: [],
-    prompt: 'Weather with place="Seattle"',
+    prompt: 'Order lookup with order_id="ORD-1001"',
   };
 
   it("runs the pending tool when the button is clicked", async () => {
@@ -198,9 +187,9 @@ describe("handleTurn", () => {
       { recent: [], pending: confirmable },
     );
 
-    expect(out.trace.decision).toMatchObject({ outcome: "call", toolId: "weather.get_weather" });
+    expect(out.trace.decision).toMatchObject({ outcome: "call", toolId: "orders.get_order" });
     expect(out.state.pending).toBeUndefined();
-    expect(calls.at(-1)).toMatchObject({ tool: "get_weather", args: { place: "Seattle" } });
+    expect(calls.at(-1)).toMatchObject({ tool: "get_order", args: { order_id: "ORD-1001" } });
   });
 
   it("runs the pending tool when the message says yes, and records why", async () => {
@@ -214,7 +203,7 @@ describe("handleTurn", () => {
       expect(out.trace.decision).toMatchObject({
         outcome: "call",
         requestKind: "confirm_yes",
-        toolId: "weather.get_weather",
+        toolId: "orders.get_order",
       });
       expect(out.trace.jev).toBeDefined();
       expect(out.state.pending).toBeUndefined();
@@ -227,7 +216,7 @@ describe("handleTurn", () => {
     const { handleTurn } = await import("./turn.ts");
     const out = await handleTurn(
       { kind: "action", type: "confirm" },
-      { recent: [], pending: { ...confirmable, toolId: "weather.renamed_away" } },
+      { recent: [], pending: { ...confirmable, toolId: "orders.renamed_away" } },
     );
 
     expect(out.trace.decision.outcome).toBe("error");
@@ -239,7 +228,7 @@ describe("handleTurn", () => {
     const { handleTurn } = await import("./turn.ts");
     failNextJev = true;
     const out = await handleTurn(
-      { kind: "message", text: "What's the weather in Seattle tomorrow?", spellcheck: false },
+      { kind: "message", text: "Where is order ORD-1001?", spellcheck: false },
       { recent: [] },
     );
 
@@ -251,7 +240,7 @@ describe("handleTurn", () => {
 
   it("spell-checks a message unless told not to", async () => {
     const { handleTurn } = await import("./turn.ts");
-    const text = "Whats the weathr in Seattle tomorrow?";
+    const text = "Wher is order ORD-1001?";
     const checked = await handleTurn({ kind: "message", text }, { recent: [] });
     const unchecked = await handleTurn(
       { kind: "message", text, spellcheck: false },
@@ -264,17 +253,17 @@ describe("handleTurn", () => {
 
   it("runs a tool picked from the choice buttons on the original message", async () => {
     const { handleTurn } = await import("./turn.ts");
-    const message = "What's the weather in Seattle tomorrow?";
+    const message = "Where is order ORD-1001?";
     const out = await handleTurn(
-      { kind: "action", type: "pick", value: "weather.get_weather" },
+      { kind: "action", type: "pick", value: "orders.get_order" },
       {
         recent: [],
-        pending: { type: "choose", options: ["weather.get_weather"], message, prompt: "" },
+        pending: { type: "choose", options: ["orders.get_order"], message, prompt: "" },
       },
     );
 
     expect(out.message).toBe(message);
-    expect(out.trace.decision).toMatchObject({ outcome: "call", toolId: "weather.get_weather" });
+    expect(out.trace.decision).toMatchObject({ outcome: "call", toolId: "orders.get_order" });
     expect(out.trace.decision.reason).toMatch(/picked this tool/);
     expect(out.trace.spelling).toBeUndefined();
     expect(out.state.pending).toBeUndefined();
@@ -308,7 +297,7 @@ describe("handleTurn", () => {
       expect(out.trace.decision).toMatchObject({ outcome: "unsupported", reason: "No tool fits" });
       expect(out.card?.type).toBe("capabilities");
     } finally {
-      wanted.tool = "weather_get_weather";
+      wanted.tool = "orders_get_order";
     }
   });
 });

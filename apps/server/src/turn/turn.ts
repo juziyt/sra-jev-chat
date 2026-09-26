@@ -5,7 +5,7 @@ import { askJev, jevConfigured } from "../jev/client.ts";
 import { buildPools } from "../jev/pools.ts";
 import { Answers, ranked, safeKey } from "../jev/questions.ts";
 import { errorMessage } from "../lib/errors.ts";
-import { callHomeTool, isConnected, statusOf } from "../mcp/clients.ts";
+import { statusOf } from "../mcp/clients.ts";
 import {
   SERVER_LABELS,
   type Card,
@@ -16,13 +16,7 @@ import {
   type SpellingTrace,
   type Trace,
 } from "../shared/types.ts";
-import {
-  ADAPTERS,
-  adapterById,
-  ensureHomeCatalog,
-  homeTargetPool,
-  type Adapter,
-} from "../tools/index.ts";
+import { ADAPTERS, adapterById, type Adapter } from "../tools/index.ts";
 import { describeArgs, execute, isDestructive } from "./execute.ts";
 import type { TurnOutput, UntimedTurn } from "./outcome.ts";
 import { correctSpelling, resolveFollowUp } from "./preprocess/preprocess.ts";
@@ -191,8 +185,6 @@ async function handleMessage(
     },
   });
 
-  if (isConnected("home")) await ensureHomeCatalog(callHomeTool);
-
   // A re-run from the choice buttons has already been rewritten.
   if (!forcedTool && jevConfigured()) {
     if (spellcheck) {
@@ -213,7 +205,7 @@ async function handleMessage(
     }
   }
 
-  const pools = buildPools(poolText ?? message, state, homeTargetPool(state));
+  const pools = buildPools(poolText ?? message, state);
   const { questions, toolKeys } = buildRequest(pools, adapters);
   const answer = await askJev(describe(message, state), questions);
   const base = { jev: answer.trace, optionLabels: answer.optionLabels };

@@ -3,10 +3,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { buildPools, type Pools } from "../../jev/pools.ts";
 import { Answers, NONE, safeKey, type BuiltQuestion } from "../../jev/questions.ts";
 import type { ConversationState, JevAnswerJson } from "../../shared/types.ts";
-import { homeTargetsFrom, type HomeCatalog } from "../index.ts";
 import type { Adapter, BuildResult, Presented, RunContext } from "./adapter.ts";
-
-export const NO_HOME: HomeCatalog = { areas: [], entities: [] };
 
 /**
  * What each question should answer. A string names a Choice option (by key, label, or a unique
@@ -18,7 +15,6 @@ export interface BuildCase {
   message: string;
   answers: AnswerSpec;
   state?: ConversationState;
-  home?: HomeCatalog;
   partial?: Record<string, unknown>;
 }
 
@@ -97,7 +93,7 @@ export function runBuild(
   c: BuildCase,
 ): { result: BuildResult; pools: Pools; used: Set<string> } {
   const state = c.state ?? { recent: [] };
-  const pools = buildPools(c.message, state, homeTargetsFrom(c.home ?? NO_HOME, state));
+  const pools = buildPools(c.message, state);
   const prefix = safeKey(adapter.id);
   const raw = answerQuestions(
     adapter.questions(pools),
@@ -132,11 +128,6 @@ export function toolResult(structuredContent: unknown, text = "ok"): CallToolRes
 /** A result with only text, as a server returns when it has no structured output (or a bad shape). */
 export function textResult(text: string, isError = false): CallToolResult {
   return { content: [{ type: "text", text }], isError };
-}
-
-/** One JSON object per text block, as the Brave search server returns its results. */
-export function jsonResult(...objects: unknown[]): CallToolResult {
-  return { content: objects.map((o) => ({ type: "text", text: JSON.stringify(o) })) };
 }
 
 export interface RunCase {

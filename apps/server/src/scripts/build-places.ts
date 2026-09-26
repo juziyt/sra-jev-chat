@@ -2,7 +2,7 @@
 import { writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
-import { fold } from "../tools/index.ts";
+import { fold } from "../turn/preprocess/places.ts";
 
 const require = createRequire(import.meta.url);
 const provinces = require("provinces") as { name: string; country: string }[];
@@ -24,7 +24,7 @@ for (const c of Object.values(countries)) {
 }
 
 const out = [...names].toSorted();
-const path = new URL("../tools/search/places.txt", import.meta.url);
+const path = new URL("../turn/preprocess/places.txt", import.meta.url);
 writeFileSync(path, `${out.join("\n")}\n`);
 
 console.log(`${out.length} names -> ${path.pathname}`);

@@ -69,7 +69,7 @@
     ".claude",
     "dist",
     "apps/server/drizzle",
-    "apps/server/src/tools/search/places.txt",
+    "apps/server/src/turn/preprocess/places.txt",
     "*.db"
   ]
 }

@@ -2,17 +2,11 @@
 import { serve } from "@hono/node-server";
 
 import { app } from "./app.ts";
-import { callHomeTool, closeAll, connectAll, isConnected } from "./mcp/clients.ts";
-import { ensureHomeCatalog } from "./tools/index.ts";
+import { closeAll, connectAll } from "./mcp/clients.ts";
 
 const port = Number(process.env.PORT ?? 8787);
 
 await connectAll();
-
-if (isConnected("home")) {
-  const catalog = await ensureHomeCatalog(callHomeTool);
-  console.log(`[home] ${catalog.entities.length} entities, ${catalog.areas.length} areas`);
-}
 
 if (!process.env.TYPESAFE_API_KEY?.trim()) {
   console.warn(

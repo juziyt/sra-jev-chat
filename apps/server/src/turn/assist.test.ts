@@ -118,7 +118,6 @@ vi.mock("../mcp/clients.ts", () => ({
   },
   connectAll: async () => [],
   closeAll: async () => {},
-  callHomeTool: async () => ({ content: [{ type: "text", text: "" }] }),
 }));
 
 const FULL = "I'm Jane Smith, jane.smith@example.com. Refund order ORD-1001, it arrived damaged.";

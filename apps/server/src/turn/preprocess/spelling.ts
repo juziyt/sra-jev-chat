@@ -9,7 +9,7 @@ import {
 
 import type { BuiltQuestion } from "../../jev/questions.ts";
 import type { ConversationState } from "../../shared/types.ts";
-import { isPlace } from "../../tools/index.ts";
+import { isPlace } from "./places.ts";
 
 const MAX_SUGGESTIONS = 4;
 const MAX_FLAGGED = 6;
@@ -58,7 +58,7 @@ function dictionary(): Promise<Dictionary> {
     getDictionary(
       finalizeSettings(
         constructSettingsForText(
-          mergeSettings(defaults, { language: "en-US", words: ["TheMealDB"] }),
+          mergeSettings(defaults, { language: "en-US" }),
           undefined,
           "plaintext",
         ),

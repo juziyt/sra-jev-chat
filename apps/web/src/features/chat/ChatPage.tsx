@@ -40,8 +40,7 @@ export function ChatPage() {
               <div className="py-16 text-center">
                 <h1 className="text-3xl font-bold">What can I help with?</h1>
                 <p className="mt-2 text-base-content/60">
-                  Weather, web search, Wikipedia, recipes, order lookup, refunds, identity
-                  verification, your to-do list, your smart home, and units &amp; maths.
+                  Order lookup, refunds, and identity verification.
                 </p>
               </div>
             )}

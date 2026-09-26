@@ -6,7 +6,6 @@ const SOURCE_BADGE: Record<string, string> = {
   "earlier result": "badge-secondary",
   "earlier request": "badge-secondary",
   "earlier message": "badge-secondary",
-  "Home Assistant": "badge-accent",
   option: "badge-neutral",
 };
 

@@ -28,11 +28,11 @@ vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
     cwd = "";
     async connect(transport: { params: StdioParams }) {
       this.cwd = transport.params.cwd ?? "";
-      if (this.cwd.endsWith("mcp-recipes")) throw new Error("spawn failed");
+      if (this.cwd.endsWith("mcp-orders")) throw new Error("spawn failed");
     }
     async listTools() {
       return {
-        tools: [{ name: "get_weather", description: "Forecast", inputSchema: {}, extra: "x" }],
+        tools: [{ name: "verify_identity", description: "Verify", inputSchema: {}, extra: "x" }],
       };
     }
     async callTool({ name }: { name: string }) {
@@ -40,7 +40,7 @@ vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
     }
     async close() {
       closed.push(this.cwd);
-      if (this.cwd.endsWith("mcp-units")) throw new Error("already closed");
+      if (this.cwd.endsWith("mcp-identity")) throw new Error("already closed");
     }
   },
 }));
@@ -52,95 +52,59 @@ describe("MCP clients", () => {
 
   beforeAll(async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    vi.stubEnv("BRAVE_API_KEY", "brave-key");
-    vi.stubEnv("TODOIST_API_KEY", "todoist-key");
-    vi.stubEnv("MEALDB_API_KEY", "");
-    vi.stubEnv("HASS_URL", "http://hass.local");
-    vi.stubEnv("HASS_TOKEN", " ");
     statuses = await mcp.connectAll();
   });
 
   afterAll(() => {
-    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
   it("connects each server once and reports them in order", async () => {
     expect(await mcp.connectAll()).toBe(statuses);
     expect(mcp.serverStatuses().map((s) => [s.id, s.status])).toEqual([
-      ["weather", "connected"],
-      ["units", "connected"],
-      ["wiki", "connected"],
-      ["orders", "connected"],
+      ["orders", "error"],
       ["identity", "connected"],
-      ["recipes", "error"],
-      ["search", "connected"],
-      ["todoist", "connected"],
-      ["home", "missing_env"],
     ]);
   });
 
   it("keeps only the tool fields the app reads", () => {
-    expect(mcp.statusOf("weather")).toEqual({
-      id: "weather",
-      label: "Weather",
+    expect(mcp.statusOf("identity")).toEqual({
+      id: "identity",
+      label: "Identity",
       status: "connected",
-      tools: [{ name: "get_weather", description: "Forecast", inputSchema: {} }],
+      tools: [{ name: "verify_identity", description: "Verify", inputSchema: {} }],
     });
-    expect(mcp.toolSpecOf("weather", "get_weather")?.description).toBe("Forecast");
-    expect(mcp.toolSpecOf("weather", "nope")).toBeUndefined();
+    expect(mcp.toolSpecOf("identity", "verify_identity")?.description).toBe("Verify");
+    expect(mcp.toolSpecOf("identity", "nope")).toBeUndefined();
   });
 
   it("explains why a server isn't usable", () => {
-    expect(mcp.statusOf("home")).toEqual({
-      id: "home",
-      label: "Home Assistant",
-      status: "missing_env",
-      missingEnv: ["HASS_TOKEN"],
-      tools: [],
-    });
-    expect(mcp.disconnectedReason("home")).toBe("missing HASS_TOKEN");
-    expect(mcp.statusOf("recipes")).toMatchObject({ label: "Recipes", error: "spawn failed" });
-    expect(mcp.disconnectedReason("recipes")).toBe("spawn failed");
-    expect(mcp.isConnected("recipes")).toBe(false);
-    expect(mcp.isConnected("weather")).toBe(true);
+    expect(mcp.statusOf("orders")).toMatchObject({ label: "Orders", error: "spawn failed" });
+    expect(mcp.disconnectedReason("orders")).toBe("spawn failed");
+    expect(mcp.isConnected("orders")).toBe(false);
+    expect(mcp.isConnected("identity")).toBe(true);
   });
 
   it("runs the local servers from their package folder with tsx", () => {
-    const weather = transports.find((t) => t.cwd?.endsWith(path.join("packages", "mcp-weather")));
-    expect(weather).toMatchObject({
+    const identity = transports.find((t) => t.cwd?.endsWith(path.join("packages", "mcp-identity")));
+    expect(identity).toMatchObject({
       command: process.execPath,
       args: ["--import", "tsx", "src/index.ts"],
       stderr: "inherit",
     });
-    const recipes = transports.find((t) => t.cwd?.endsWith("mcp-recipes"));
-    expect(recipes?.env).toMatchObject({ MEALDB_API_KEY: "", PATH: process.env.PATH });
-  });
-
-  it("runs the installed servers' bins with their key and a minimal env", () => {
-    const search = transports.find((t) => t.env.BRAVE_API_KEY);
-    expect(search).toMatchObject({ command: process.execPath, stderr: "ignore" });
-    expect(search?.args[0]).toMatch(/brave-search-mcp-server[/\\]dist[/\\]index\.js$/);
-    expect(search?.args.slice(1)).toEqual(["--transport", "stdio"]);
-    expect(Object.keys(search?.env ?? {}).toSorted()).toEqual(["BRAVE_API_KEY", "HOME", "PATH"]);
-
-    const todoist = transports.find((t) => t.env.TODOIST_API_KEY);
-    expect(todoist).toMatchObject({ env: { TODOIST_API_KEY: "todoist-key" }, stderr: "ignore" });
-    expect(todoist?.args).toEqual([
-      expect.stringMatching(/todoist-ai[/\\]bin[/\\]todoist-ai\.js$/),
-    ]);
   });
 
   it("calls a tool on a connected server and times it", async () => {
-    const { result, ms } = await mcp.callTool("weather", "get_weather", {});
-    expect(result.content).toEqual([{ type: "text", text: "called get_weather" }]);
+    const { result, ms } = await mcp.callTool("identity", "verify_identity", {});
+    expect(result.content).toEqual([{ type: "text", text: "called verify_identity" }]);
     expect(ms).toBeGreaterThanOrEqual(0);
-    await expect(mcp.callTool("home", "HassTurnOn", {})).rejects.toThrow("home is not connected");
-    await expect(mcp.callHomeTool("HassTurnOn", {})).rejects.toThrow("home is not connected");
+    await expect(mcp.callTool("orders", "get_order", {})).rejects.toThrow(
+      "orders is not connected",
+    );
   });
 
   it("closes every client even when one fails to close", async () => {
     await mcp.closeAll();
-    expect(closed).toHaveLength(7);
+    expect(closed).toHaveLength(1);
   });
 });

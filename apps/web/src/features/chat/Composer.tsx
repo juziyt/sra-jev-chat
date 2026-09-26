@@ -5,7 +5,7 @@ import { useState, type ReactNode } from "react";
 export function Composer({
   onSend,
   disabled,
-  placeholder = "Ask about the weather, search the web, add a task, control the lights…",
+  placeholder = "Look up an order, request a refund, verify identity…",
   autoFocus = true,
   leading,
 }: {

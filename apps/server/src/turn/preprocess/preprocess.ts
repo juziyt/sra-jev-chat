@@ -1,7 +1,6 @@
 import { HISTORY_FOR_PREPROCESSING } from "../../config.ts";
 import { askJev } from "../../jev/client.ts";
 import type { ConversationState, FollowUpTrace, SpellingTrace } from "../../shared/types.ts";
-import { homeWords } from "../../tools/index.ts";
 import { followUpContent, followUpQuestion, rewriteOptions, slotRewrite } from "./followup.ts";
 import { applyCorrections, checkSpelling, spellingQuestions } from "./spelling.ts";
 
@@ -19,7 +18,7 @@ export async function correctSpelling(
   message: string,
   state: ConversationState,
 ): Promise<SpellingTrace | undefined> {
-  const { fixed, flagged } = await checkSpelling(message, state, homeWords());
+  const { fixed, flagged } = await checkSpelling(message, state);
   if (!fixed.length && !flagged.length) return undefined;
 
   const autoCorrected = applyCorrections(message, fixed);

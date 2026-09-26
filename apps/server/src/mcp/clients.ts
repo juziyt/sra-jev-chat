@@ -1,10 +1,8 @@
-import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 
@@ -28,82 +26,25 @@ interface ServerDef {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
-const require = createRequire(import.meta.url);
 
-function binPath(pkg: string, bin: string) {
-  // Some packages don't export ./package.json, so it can't be resolved normally.
-  const pkgJson = path.resolve(here, "../../node_modules", pkg, "package.json");
-  const bins = require(pkgJson).bin as Record<string, string>;
-  return path.resolve(path.dirname(pkgJson), bins[bin]);
-}
-
-function childEnv(extra: Record<string, string>) {
+function childEnv() {
   // The stdio transport passes only a minimal env by default.
-  return { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", ...extra };
+  return { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "" };
 }
 
-function localTs(pkgDir: string, env: Record<string, string> = {}): Transport {
+function localTs(pkgDir: string): Transport {
   return new StdioClientTransport({
     command: process.execPath,
     args: ["--import", "tsx", "src/index.ts"],
     cwd: path.join(repoRoot, "packages", pkgDir),
-    env: childEnv(env),
+    env: childEnv(),
     stderr: "inherit",
   });
 }
 
-function installedBin(
-  pkg: string,
-  bin: string,
-  env: Record<string, string>,
-  args: string[] = [],
-): Transport {
-  return new StdioClientTransport({
-    command: process.execPath,
-    args: [binPath(pkg, bin), ...args],
-    env: childEnv(env),
-    stderr: "ignore",
-  });
-}
-
 const SERVERS: ServerDef[] = [
-  { id: "weather", env: [], transport: () => localTs("mcp-weather") },
-  { id: "units", env: [], transport: () => localTs("mcp-units") },
-  { id: "wiki", env: [], transport: () => localTs("mcp-wiki") },
   { id: "orders", env: [], transport: () => localTs("mcp-orders") },
   { id: "identity", env: [], transport: () => localTs("mcp-identity") },
-  {
-    id: "recipes",
-    env: [],
-    transport: () => localTs("mcp-recipes", { MEALDB_API_KEY: process.env.MEALDB_API_KEY ?? "" }),
-  },
-  {
-    id: "search",
-    env: ["BRAVE_API_KEY"],
-    transport: () =>
-      installedBin(
-        "@brave/brave-search-mcp-server",
-        "brave-search-mcp-server",
-        { BRAVE_API_KEY: process.env.BRAVE_API_KEY! },
-        ["--transport", "stdio"],
-      ),
-  },
-  {
-    id: "todoist",
-    env: ["TODOIST_API_KEY"],
-    transport: () =>
-      installedBin("@doist/todoist-ai", "todoist-ai", {
-        TODOIST_API_KEY: process.env.TODOIST_API_KEY!,
-      }),
-  },
-  {
-    id: "home",
-    env: ["HASS_URL", "HASS_TOKEN"],
-    transport: () =>
-      new StreamableHTTPClientTransport(new URL("/api/mcp", process.env.HASS_URL), {
-        requestInit: { headers: { Authorization: `Bearer ${process.env.HASS_TOKEN}` } },
-      }),
-  },
 ];
 
 const clients = new Map<ServerId, Client>();
@@ -200,14 +141,6 @@ export async function callTool(
   const start = performance.now();
   const result = (await client.callTool({ name, arguments: args })) as CallToolResult;
   return { result, ms: Math.round(performance.now() - start) };
-}
-
-/** Calls a Home Assistant tool and returns just its result. */
-export async function callHomeTool(
-  tool: string,
-  args: Record<string, unknown>,
-): Promise<CallToolResult> {
-  return (await callTool("home", tool, args)).result;
 }
 
 /** Closes every connected client, ignoring close errors. */
