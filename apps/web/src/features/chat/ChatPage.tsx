@@ -1,4 +1,4 @@
-import { useParams } from "react-router";
+import { Navigate, useParams } from "react-router";
 
 import { ResizeHandle } from "../../components/ui/ResizeHandle.tsx";
 import { useMessages, useSendTurn } from "../../queries.ts";
@@ -6,15 +6,14 @@ import { INSPECTOR_WIDTH, useUi } from "../../store.ts";
 import { Inspector } from "../inspector/Inspector.tsx";
 import { Composer } from "./Composer.tsx";
 import { MessageBubble } from "./MessageBubble.tsx";
-import { SuggestedPrompts } from "./SuggestedPrompts.tsx";
 
 function scrollIntoView(el: HTMLDivElement | null) {
   el?.scrollIntoView({ behavior: "smooth" });
 }
 
 /**
- * A conversation: the message thread, suggested prompts, the composer, and the inspector for the
- * selected reply (the latest one by default).
+ * A conversation: the message thread, the composer, and the inspector for the selected reply (the
+ * latest one by default).
  */
 export function ChatPage() {
   const { id } = useParams() as { id: string };
@@ -27,6 +26,9 @@ export function ChatPage() {
   const selected = messages.find((m) => m.id === selectedMessageId) ?? lastAssistant;
 
   if (error) return <div className="p-8 text-error">{error.message}</div>;
+  if (!isLoading && data?.conversation.kind === "assist") {
+    return <Navigate to={`/a/${id}`} replace />;
+  }
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -38,8 +40,8 @@ export function ChatPage() {
               <div className="py-16 text-center">
                 <h1 className="text-3xl font-bold">What can I help with?</h1>
                 <p className="mt-2 text-base-content/60">
-                  Weather, web search, Wikipedia, recipes, your to-do list, your smart home, and
-                  units &amp; maths. Try a prompt below.
+                  Weather, web search, Wikipedia, recipes, order lookup, refunds, identity
+                  verification, your to-do list, your smart home, and units &amp; maths.
                 </p>
               </div>
             )}
@@ -68,8 +70,7 @@ export function ChatPage() {
           </div>
         </div>
         <div className="border-t border-base-300 bg-base-100 px-4 py-3">
-          <div className="mx-auto max-w-3xl space-y-2">
-            <SuggestedPrompts disabled={send.isPending} onPick={(text) => send.mutate({ text })} />
+          <div className="mx-auto max-w-3xl">
             <Composer disabled={send.isPending} onSend={(text) => send.mutate({ text })} />
           </div>
         </div>

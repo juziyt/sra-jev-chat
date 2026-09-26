@@ -1,5 +1,7 @@
 import { climateSet, homeStatus, lightSet, turnAdapter } from "./home/home.ts";
+import { verifyIdentity } from "./identity/identity.ts";
 import type { Adapter } from "./kit/adapter.ts";
+import { getOrder, initiateRefund } from "./orders/orders.ts";
 import { findRecipes, getRecipe } from "./recipes/recipes.ts";
 import { webAnswer, webSearch } from "./search/search.ts";
 import { addTask, completeTask, findTasks } from "./todoist/todoist.ts";
@@ -25,7 +27,13 @@ export const ADAPTERS: Adapter[] = [
   wikiFact,
   findRecipes,
   getRecipe,
+  getOrder,
+  initiateRefund,
+  verifyIdentity,
 ];
+
+/** Identity, order lookup, and refund — the tools the assist copilot may call. */
+export const CS_ADAPTERS: Adapter[] = [verifyIdentity, getOrder, initiateRefund];
 
 /** The registered adapter with this id, or undefined. */
 export function adapterById(id: string): Adapter | undefined {

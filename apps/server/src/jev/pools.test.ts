@@ -131,6 +131,24 @@ describe("buildPools", () => {
     );
   });
 
+  it("offers a pending ask's collected arguments as text candidates", () => {
+    const pools = buildPools("jane.smith@example.com", {
+      recent: [],
+      pending: {
+        type: "ask",
+        toolId: "identity.verify_identity",
+        missing: "email",
+        prompt: "What is the email address?",
+        message: "verify my identity",
+        partialArgs: { name: "Jane Smith" },
+      },
+    });
+    expect(pools.text.map((c) => c.value)).toEqual(
+      expect.arrayContaining(["jane.smith@example.com", "Jane Smith", "verify my identity"]),
+    );
+    expect(pools.text.find((c) => c.value === "Jane Smith")?.source).toBe("earlier answer");
+  });
+
   it("falls back to message phrases when a tool supplies no targets", () => {
     const pools = buildPools("turn on the desk lamp", { recent: [] });
     expect(pools.homeTargets.every((t) => t.source === "message")).toBe(true);

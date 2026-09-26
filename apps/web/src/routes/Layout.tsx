@@ -58,16 +58,31 @@ export function Layout() {
           <button
             className="btn btn-primary btn-sm w-full"
             disabled={create.isPending}
-            onClick={async () => navigate(`/c/${(await create.mutateAsync()).id}`)}
+            onClick={async () => navigate(`/c/${(await create.mutateAsync("chat")).id}`)}
           >
             + New chat
+          </button>
+          <button
+            className="btn btn-ghost btn-sm mt-2 w-full"
+            disabled={create.isPending}
+            onClick={async () => navigate(`/a/${(await create.mutateAsync("assist")).id}`)}
+          >
+            + New assist
           </button>
         </div>
         <ul className="menu menu-sm w-full flex-1 flex-nowrap overflow-y-auto overflow-x-hidden">
           {conversations?.map((c) => (
             <li key={c.id} className="group">
-              <NavLink to={`/c/${c.id}`} className="flex min-w-0 justify-between">
-                <span className="truncate">{c.title}</span>
+              <NavLink
+                to={c.kind === "assist" ? `/a/${c.id}` : `/c/${c.id}`}
+                className="flex min-w-0 justify-between"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  {c.kind === "assist" && (
+                    <span className="badge badge-xs badge-ghost shrink-0">Assist</span>
+                  )}
+                  <span className="truncate">{c.title}</span>
+                </span>
                 <button
                   type="button"
                   aria-label={`Delete ${c.title}`}

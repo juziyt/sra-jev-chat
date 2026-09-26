@@ -46,11 +46,28 @@ export type Pending =
     }
   | { type: "choose"; options: string[]; message: string; prompt: string };
 
+/** Which product a conversation belongs to. */
+export type ConversationKind = "chat" | "assist";
+
+/** Which assist pane a message was typed or posted into. Chat messages are `"right"`. */
+export type MessagePane = "left" | "right";
+
+/** Who wrote a stored message. Chat uses `user` / `assistant`; assist left uses `customer` / `service_rep`. */
+export type MessageRole = "user" | "assistant" | "customer" | "service_rep";
+
+/** A line from the customer-facing assist transcript, stored for Jev to observe. */
+export interface LeftLine {
+  speaker: "customer" | "service_rep";
+  text: string;
+}
+
 export interface ConversationState {
   pending?: Pending;
   /** Recent tool results, newest first */
   results?: ShownResult[];
   recent: { user: string; assistant: string }[];
+  /** Assist left-pane transcript (not observations or copilot chit-chat). */
+  left?: LeftLine[];
 }
 
 export type TurnAction = { type: "confirm" } | { type: "cancel" } | { type: "pick"; value: string };

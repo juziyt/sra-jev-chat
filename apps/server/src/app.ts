@@ -5,9 +5,16 @@ import { z } from "zod";
 
 import { HISTORY_KEPT } from "./config.ts";
 import { db, schema } from "./db/index.ts";
-import { sendMessageSchema } from "./db/schema.ts";
+import { createConversationSchema, sendMessageSchema } from "./db/schema.ts";
 import { serverStatuses } from "./mcp/clients.ts";
-import { actionLabel, type ConversationState } from "./shared/types.ts";
+import {
+  actionLabel,
+  type ConversationKind,
+  type ConversationState,
+  type MessagePane,
+  type MessageRole,
+} from "./shared/types.ts";
+import { handleAssistTurn, type AssistInput } from "./turn/assist.ts";
 import { handleTurn, type TurnInput } from "./turn/turn.ts";
 
 const { conversations, messages } = schema;
@@ -21,6 +28,7 @@ const actionSchema = z.discriminatedUnion("type", [
 const conversationSummary = {
   id: conversations.id,
   title: conversations.title,
+  kind: conversations.kind,
   createdAt: conversations.createdAt,
 };
 
@@ -28,14 +36,14 @@ const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 const turnQueues = new Map<string, Promise<unknown>>();
 
+type MessageRow = typeof messages.$inferSelect;
+type TurnReply = MessageRow | { silent: true };
+
 async function runTurn(
   conversationId: string,
-  input: TurnInput,
-  userText: string,
-): Promise<typeof messages.$inferSelect | undefined> {
-  const run = (turnQueues.get(conversationId) ?? Promise.resolve()).then(() =>
-    runQueuedTurn(conversationId, input, userText),
-  );
+  job: () => Promise<TurnReply | undefined>,
+): Promise<TurnReply | undefined> {
+  const run = (turnQueues.get(conversationId) ?? Promise.resolve()).then(() => job());
   const settled = run.catch(() => {});
   turnQueues.set(conversationId, settled);
   try {
@@ -45,41 +53,66 @@ async function runTurn(
   }
 }
 
-async function runQueuedTurn(
+function insertHuman(conversationId: string, role: MessageRole, pane: MessagePane, text: string) {
+  db.insert(messages).values({ id: crypto.randomUUID(), conversationId, role, pane, text }).run();
+}
+
+function insertAssistant(
   conversationId: string,
-  input: TurnInput,
-  userText: string,
-): Promise<typeof messages.$inferSelect | undefined> {
-  const convo = db.select().from(conversations).where(eq(conversations.id, conversationId)).get();
-  if (!convo) return undefined;
-
-  db.insert(messages)
-    .values({ id: crypto.randomUUID(), conversationId, role: "user", text: userText })
-    .run();
-
-  const out = await handleTurn(input, convo.state);
-  const recent = [
-    ...out.state.recent,
-    { user: out.message ?? userText, assistant: out.text },
-  ].slice(-HISTORY_KEPT);
-  const state: ConversationState = { ...out.state, recent };
-
-  const title =
-    convo.title === "New chat" && input.kind === "message" ? userText.slice(0, 60) : convo.title;
-  db.update(conversations).set({ state, title }).where(eq(conversations.id, conversationId)).run();
-
+  out: { text: string; card?: MessageRow["card"]; trace: MessageRow["trace"] },
+): MessageRow {
   return db
     .insert(messages)
     .values({
       id: crypto.randomUUID(),
       conversationId,
       role: "assistant",
+      pane: "right",
       text: out.text,
       card: out.card,
       trace: out.trace,
     })
     .returning()
     .get();
+}
+
+async function runChatTurn(
+  conversationId: string,
+  convo: typeof conversations.$inferSelect,
+  input: TurnInput,
+  userText: string,
+): Promise<MessageRow> {
+  insertHuman(conversationId, "user", "right", userText);
+  const out = await handleTurn(input, convo.state);
+  const recent = [
+    ...out.state.recent,
+    { user: out.message ?? userText, assistant: out.text },
+  ].slice(-HISTORY_KEPT);
+  const state: ConversationState = { ...out.state, recent };
+  const title =
+    convo.title === "New chat" && input.kind === "message" ? userText.slice(0, 60) : convo.title;
+  db.update(conversations).set({ state, title }).where(eq(conversations.id, conversationId)).run();
+  return insertAssistant(conversationId, out);
+}
+
+async function runAssistQueued(
+  conversationId: string,
+  convo: typeof conversations.$inferSelect,
+  input: AssistInput,
+  userText: string,
+  role: MessageRole,
+  pane: MessagePane,
+): Promise<TurnReply> {
+  insertHuman(conversationId, role, pane, userText);
+  const out = await handleAssistTurn(input, convo.state);
+  const untitled = convo.title === "New assist" || convo.title === "New chat";
+  const title = untitled ? userText.slice(0, 60) : convo.title;
+  db.update(conversations)
+    .set({ state: out.state, title })
+    .where(eq(conversations.id, conversationId))
+    .run();
+  if (out.silent) return { silent: true };
+  return insertAssistant(conversationId, out);
 }
 
 export const app = new Hono()
@@ -105,10 +138,22 @@ export const app = new Hono()
         .all(),
     ),
   )
-  .post("/conversations", (c) => {
+  .post("/conversations", async (c) => {
+    let kind: ConversationKind = "chat";
+    if (c.req.header("content-type")?.includes("application/json")) {
+      const raw: unknown = await c.req.json().catch(() => ({}));
+      const parsed = createConversationSchema.safeParse(raw);
+      if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
+      kind = parsed.data.kind ?? "chat";
+    }
     const convo = db
       .insert(conversations)
-      .values({ id: crypto.randomUUID(), state: { recent: [] } })
+      .values({
+        id: crypto.randomUUID(),
+        kind,
+        title: kind === "assist" ? "New assist" : "New chat",
+        state: { recent: [] },
+      })
       .returning(conversationSummary)
       .get();
     return c.json(convo, 201);
@@ -130,25 +175,67 @@ export const app = new Hono()
       .orderBy(asc(messages.createdAt))
       .all();
     return c.json({
-      conversation: { id: convo.id, title: convo.title, pending: convo.state.pending ?? null },
+      conversation: {
+        id: convo.id,
+        title: convo.title,
+        kind: convo.kind,
+        pending: convo.state.pending ?? null,
+      },
       messages: rows,
     });
   })
   .post("/conversations/:id/messages", zValidator("json", sendMessageSchema), async (c) => {
-    const { text, spellcheck } = c.req.valid("json");
-    const assistant = await runTurn(c.req.param("id"), { kind: "message", text, spellcheck }, text);
-    if (!assistant) return c.json({ error: "Not found" }, 404);
-    return c.json(assistant);
+    const id = c.req.param("id");
+    const { text, spellcheck, pane, speaker } = c.req.valid("json");
+    const reply = await runTurn(id, async (): Promise<TurnReply | undefined> => {
+      const convo = db.select().from(conversations).where(eq(conversations.id, id)).get();
+      if (!convo) return undefined;
+      if (convo.kind === "assist") {
+        const side: MessagePane = pane ?? "right";
+        if (side === "left") {
+          const who = speaker ?? "customer";
+          return runAssistQueued(
+            id,
+            convo,
+            { kind: "left", speaker: who, text },
+            text,
+            who,
+            "left",
+          );
+        }
+        return runAssistQueued(
+          id,
+          convo,
+          { kind: "right", text, spellcheck },
+          text,
+          "service_rep",
+          "right",
+        );
+      }
+      return runChatTurn(id, convo, { kind: "message", text, spellcheck }, text);
+    });
+    if (!reply) return c.json({ error: "Not found" }, 404);
+    return c.json(reply);
   })
   .post("/conversations/:id/actions", zValidator("json", actionSchema), async (c) => {
+    const id = c.req.param("id");
     const action = c.req.valid("json");
-    const assistant = await runTurn(
-      c.req.param("id"),
-      { kind: "action", ...action },
-      actionLabel(action),
-    );
-    if (!assistant) return c.json({ error: "Not found" }, 404);
-    return c.json(assistant);
+    const label = actionLabel(action);
+    const input: AssistInput | TurnInput =
+      action.type === "pick"
+        ? { kind: "action", type: "pick", value: action.value }
+        : { kind: "action", type: action.type };
+
+    const reply = await runTurn(id, async (): Promise<TurnReply | undefined> => {
+      const convo = db.select().from(conversations).where(eq(conversations.id, id)).get();
+      if (!convo) return undefined;
+      if (convo.kind === "assist") {
+        return runAssistQueued(id, convo, input, label, "service_rep", "right");
+      }
+      return runChatTurn(id, convo, input, label);
+    });
+    if (!reply) return c.json({ error: "Not found" }, 404);
+    return c.json(reply);
   });
 
 export type AppType = typeof app;

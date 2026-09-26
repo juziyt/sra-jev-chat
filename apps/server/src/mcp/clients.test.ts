@@ -71,6 +71,8 @@ describe("MCP clients", () => {
       ["weather", "connected"],
       ["units", "connected"],
       ["wiki", "connected"],
+      ["orders", "connected"],
+      ["identity", "connected"],
       ["recipes", "error"],
       ["search", "connected"],
       ["todoist", "connected"],
@@ -139,6 +141,6 @@ describe("MCP clients", () => {
 
   it("closes every client even when one fails to close", async () => {
     await mcp.closeAll();
-    expect(closed).toHaveLength(5);
+    expect(closed).toHaveLength(7);
   });
 });

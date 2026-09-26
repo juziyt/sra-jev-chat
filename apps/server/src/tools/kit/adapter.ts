@@ -49,7 +49,7 @@ interface BaseAdapter {
   questions(pools: Pools): Record<string, BuiltQuestion>;
   /**
    * Turn Jev's answers into MCP arguments. Arguments starting with `__` are private hints for
-   * `confirm`, `run` or `present`: never sent to a single-step tool, and never kept with the result.
+   * `confirm`, `run`, `present` or a pending ask (`__answer`): never sent to a single-step tool, and never kept with the result.
    */
   build(a: Answers, pools: Pools, partial?: Record<string, unknown>): BuildResult;
   /** Needs a confirmation card before calling */

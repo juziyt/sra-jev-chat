@@ -70,6 +70,8 @@ const SERVERS: ServerDef[] = [
   { id: "weather", env: [], transport: () => localTs("mcp-weather") },
   { id: "units", env: [], transport: () => localTs("mcp-units") },
   { id: "wiki", env: [], transport: () => localTs("mcp-wiki") },
+  { id: "orders", env: [], transport: () => localTs("mcp-orders") },
+  { id: "identity", env: [], transport: () => localTs("mcp-identity") },
   {
     id: "recipes",
     env: [],

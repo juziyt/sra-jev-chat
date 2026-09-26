@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { keyed } from "../ui/keyed.ts";
 import type { CardComponent } from "./types.ts";
 
@@ -75,3 +77,28 @@ export const ErrorCard: CardComponent<"error"> = ({ card }) => (
     {card.message}
   </div>
 );
+
+/** A canned customer reply the service rep can copy into the left pane. */
+export const SuggestionCard: CardComponent<"suggestion"> = ({ card }) => {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="rounded-box border border-dashed border-base-300 bg-base-200 p-3">
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-base-content/60">
+        Suggested reply
+      </div>
+      <p className="whitespace-pre-line text-sm">{card.text}</p>
+      <button
+        type="button"
+        className="btn btn-ghost btn-xs mt-2"
+        onClick={() => {
+          void navigator.clipboard.writeText(card.text).then(
+            () => setCopied(true),
+            () => {},
+          );
+        }}
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+};

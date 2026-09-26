@@ -20,22 +20,46 @@ vi.mock("./turn/turn.ts", () => ({
     };
   },
 }));
+vi.mock("./turn/assist.ts", () => ({
+  handleAssistTurn: async (input: { kind: string; text?: string; speaker?: string }) => {
+    if (input.kind === "left" && input.text === "quiet") {
+      return {
+        text: "",
+        silent: true,
+        state: { recent: [], left: [{ speaker: input.speaker, text: input.text }] },
+        trace: { usedQuestions: [], decision: { outcome: "silent", reason: "test" }, totalMs: 1 },
+      };
+    }
+    return {
+      text: "Noted.",
+      state: { recent: [] },
+      trace: { usedQuestions: [], decision: { outcome: "observe", reason: "test" }, totalMs: 1 },
+    };
+  },
+}));
 
 const { app } = await import("./app.ts");
 
 interface Summary {
   id: string;
   title: string;
+  kind: string;
   createdAt: string;
 }
 
 interface Thread {
-  conversation: { id: string; title: string; pending: unknown };
-  messages: { role: string; text: string }[];
+  conversation: { id: string; title: string; kind: string; pending: unknown };
+  messages: { role: string; pane: string; text: string }[];
 }
 
 async function newConversation(): Promise<Summary> {
   const res = await app.request("/api/conversations", { method: "POST" });
+  expect(res.status).toBe(201);
+  return (await res.json()) as Summary;
+}
+
+async function newAssist(): Promise<Summary> {
+  const res = await post("/api/conversations", { kind: "assist" });
   expect(res.status).toBe(201);
   return (await res.json()) as Summary;
 }
@@ -55,10 +79,66 @@ async function post(path: string, body: unknown): Promise<Response> {
 describe("app", () => {
   it("creates and lists conversations", async () => {
     const convo = await newConversation();
-    expect(convo).toEqual({ id: convo.id, title: "New chat", createdAt: convo.createdAt });
+    expect(convo).toEqual({
+      id: convo.id,
+      title: "New chat",
+      kind: "chat",
+      createdAt: convo.createdAt,
+    });
 
     const list = await (await app.request("/api/conversations")).json();
     expect(list).toContainEqual(convo);
+  });
+
+  it("creates an assist conversation", async () => {
+    const res = await post("/api/conversations", { kind: "assist" });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ title: "New assist", kind: "assist" });
+  });
+
+  it("stores a left-pane customer line and an assistant reply on assist", async () => {
+    const { id } = await newAssist();
+    const res = await post(`/api/conversations/${id}/messages`, {
+      text: "I need a refund",
+      pane: "left",
+      speaker: "customer",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ role: "assistant", pane: "right", text: "Noted." });
+
+    const { conversation, messages } = await threadOf(id);
+    expect(conversation.kind).toBe("assist");
+    expect(messages.map((m) => [m.role, m.pane, m.text])).toEqual([
+      ["customer", "left", "I need a refund"],
+      ["assistant", "right", "Noted."],
+    ]);
+  });
+
+  it("omits an assistant row when the copilot stays silent", async () => {
+    const { id } = await newAssist();
+    const res = await post(`/api/conversations/${id}/messages`, {
+      text: "quiet",
+      pane: "left",
+      speaker: "customer",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ silent: true });
+
+    const { messages } = await threadOf(id);
+    expect(messages.map((m) => [m.role, m.pane, m.text])).toEqual([["customer", "left", "quiet"]]);
+  });
+
+  it("records a right-pane assist ask as the service rep", async () => {
+    const { id } = await newAssist();
+    await post(`/api/conversations/${id}/messages`, {
+      text: "Look up ORD-1001",
+      pane: "right",
+    });
+    const { messages } = await threadOf(id);
+    expect(messages.map((m) => [m.role, m.pane, m.text])).toEqual([
+      ["service_rep", "right", "Look up ORD-1001"],
+      ["assistant", "right", "Noted."],
+    ]);
   });
 
   it("runs a message turn, titles the chat after it, and stores both messages", async () => {
@@ -77,7 +157,7 @@ describe("app", () => {
     expect(inputs.at(-1)).toEqual({ kind: "message", text: " hi there ", spellcheck: false });
 
     const { conversation, messages } = await threadOf(id);
-    expect(conversation).toEqual({ id, title: " hi there ", pending: null });
+    expect(conversation).toEqual({ id, title: " hi there ", kind: "chat", pending: null });
     expect(messages.map((m) => [m.role, m.text])).toEqual([
       ["user", " hi there "],
       ["assistant", "Done."],

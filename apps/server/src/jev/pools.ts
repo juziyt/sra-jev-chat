@@ -146,6 +146,11 @@ export function buildPools(
   }
   if (state.pending?.type === "ask") {
     for (const s of messageSpans(state.pending.message)) addText(s, "earlier message");
+    for (const [k, v] of Object.entries(state.pending.partialArgs)) {
+      if (!k.startsWith("__") && typeof v === "string" && v.length < 80) {
+        addText(v, "earlier answer");
+      }
+    }
   }
 
   const numbers: NumberCandidate[] = [];

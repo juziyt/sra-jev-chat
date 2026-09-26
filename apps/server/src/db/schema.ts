@@ -6,13 +6,20 @@ import { z } from "zod";
 import {
   MAX_MESSAGE_CHARS,
   type Card,
+  type ConversationKind,
   type ConversationState,
+  type MessagePane,
+  type MessageRole,
   type Trace,
 } from "../shared/types.ts";
 
 export const conversations = sqliteTable("conversations", {
   id: text("id").primaryKey(),
   title: text("title").notNull().default("New chat"),
+  kind: text("kind", { enum: ["chat", "assist"] })
+    .$type<ConversationKind>()
+    .notNull()
+    .default("chat"),
   state: text("state", { mode: "json" }).$type<ConversationState>().notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
@@ -26,7 +33,13 @@ export const messages = sqliteTable(
     conversationId: text("conversation_id")
       .notNull()
       .references(() => conversations.id, { onDelete: "cascade" }),
-    role: text("role", { enum: ["user", "assistant"] }).notNull(),
+    role: text("role", { enum: ["user", "assistant", "customer", "service_rep"] })
+      .$type<MessageRole>()
+      .notNull(),
+    pane: text("pane", { enum: ["left", "right"] })
+      .$type<MessagePane>()
+      .notNull()
+      .default("right"),
     text: text("text").notNull(),
     card: text("card", { mode: "json" }).$type<Card>(),
     trace: text("trace", { mode: "json" }).$type<Trace>(),
@@ -39,9 +52,16 @@ export const messages = sqliteTable(
 
 const messageInsertSchema = createInsertSchema(messages);
 
+/** Body of POST /conversations. */
+export const createConversationSchema = z.object({
+  kind: z.enum(["chat", "assist"]).optional(),
+});
+
 /** Body of POST /conversations/:id/messages. */
 export const sendMessageSchema = messageInsertSchema.pick({ text: true }).extend({
   text: z.string().max(MAX_MESSAGE_CHARS),
   /** Run the spell-check step; defaults to on */
   spellcheck: z.boolean().optional(),
+  pane: z.enum(["left", "right"]).optional(),
+  speaker: z.enum(["customer", "service_rep"]).optional(),
 });

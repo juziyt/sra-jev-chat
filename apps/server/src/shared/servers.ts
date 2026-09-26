@@ -1,4 +1,13 @@
-export type ServerId = "weather" | "units" | "search" | "todoist" | "home" | "wiki" | "recipes";
+export type ServerId =
+  | "weather"
+  | "units"
+  | "search"
+  | "todoist"
+  | "home"
+  | "wiki"
+  | "recipes"
+  | "orders"
+  | "identity";
 
 /** Display name per server. */
 export const SERVER_LABELS: Record<ServerId, string> = {
@@ -9,4 +18,6 @@ export const SERVER_LABELS: Record<ServerId, string> = {
   home: "Home Assistant",
   wiki: "Wikipedia",
   recipes: "Recipes",
+  orders: "Orders",
+  identity: "Identity",
 };

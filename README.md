@@ -2,8 +2,6 @@
 
 A chat-shaped command bar that calls real tools, **without an LLM writing anything.**
 
-![jev chat screenshot](./screenshot.png)
-
 Every turn, a classifier picks: what was asked, which tool to call, which value goes in each
 argument, whether to confirm first, and what kind of reply to give. Code does the rest: it calls
 the MCP servers and builds the reply from the tools' own data. Because no model ever writes the
@@ -13,10 +11,16 @@ returned by a tool.
 An inspector pane shows the whole decision for any reply: the request, every question, every
 probability, and what the code did with the answers.
 
+**Assist** (`+ New assist`) is a two-pane desktop view: the left thread is a role-played customer /
+service-rep conversation; the right thread is a back-office assistant that watches the left pane
+and may verify identity, look up an order, or request a refund. Observations are templates Jev
+picks among — still no generated prose. See [Assist](#assist).
+
 - [Jev Chat](#jev-chat)
   - [What is Jev?](#what-is-jev)
   - [Run it](#run-it)
   - [How it works](#how-it-works)
+  - [Assist](#assist)
   - [Adding a tool](#adding-a-tool)
   - [Layout](#layout)
   - [Notes](#notes)
@@ -53,8 +57,8 @@ pnpm dev               # server :8787, web http://localhost:5173
 Only `TYPESAFE_API_KEY` is required. Jev is a paid API: get a key from the
 [TypeSafe console](https://console.typesafe.ai/settings/keys). Without one the app still starts, but
 every message gets an error reply. Other servers without a key show as "no key" in the sidebar and
-everything else keeps working, so weather, units, Wikipedia and recipes need nothing beyond the Jev
-key.
+everything else keeps working, so weather, units, Wikipedia, recipes, orders and identity need
+nothing beyond the Jev key.
 
 The API has no login, so it listens on `127.0.0.1` only and refuses requests addressed to, or sent
 from a page on, any host other than `localhost`, `127.0.0.1` or `[::1]`. Open the app on this
@@ -66,6 +70,8 @@ files.
 | Weather (`packages/mcp-weather`, Open-Meteo)               | nothing                                                  |
 | Units & maths (`packages/mcp-units`)                       | nothing                                                  |
 | Wikipedia (`packages/mcp-wiki`)                            | nothing                                                  |
+| Orders (`packages/mcp-orders`, sample catalog)             | nothing                                                  |
+| Identity (`packages/mcp-identity`, sample catalog)         | nothing                                                  |
 | Recipes (`packages/mcp-recipes`, TheMealDB)                | nothing (public test key; `MEALDB_API_KEY` for your own) |
 | Brave Search (`@brave/brave-search-mcp-server`)            | `BRAVE_API_KEY`                                          |
 | Todoist (`@doist/todoist-ai`)                              | `TODOIST_API_KEY`                                        |
@@ -78,12 +84,29 @@ Some things to try:
 - 350F in celsius, or: What's a 20% tip on $64?
 - How tall is Mount Rainier?
 - Something vegan for dinner, then: How do I make the first one?
+- Where is order ORD-1001?
+- Refund order ORD-1001, it arrived damaged
+- Verify Jane Smith at jane.smith@example.com
 - Who hosts the Syntax podcast?
 - Remind me to renew my passport tomorrow
 - Turn off the kitchen lights
 
-Conversations are stored in SQLite at `apps/server/jev-chat.db` (`DATABASE_PATH` is relative to
-`apps/server`). Delete the file to start over.
+Order lookup uses a built-in sample catalog: `ORD-1001` (shipped), `ORD-1002` (delivered),
+`ORD-1003` (processing), `ORD-1042` (cancelled). A bare number like `1001` works too. Refunds
+open a request (`REF-1001` for `ORD-1001`); cancelled orders can't be refunded.
+
+Identity verification uses a sample catalog: `Jane Smith` / `jane.smith@example.com`,
+`Alex Rivera` / `alex.rivera@example.com`, `Sam Chen` / `sam.chen@example.com`.
+
+**Assist.** Click **+ New assist** (desktop width). Type on the left as the customer. The right
+pane should ask for name and email, then the order, then confirm a refund:
+
+- I want to refund my order
+- I'm Jane Smith, jane.smith@example.com
+- It's ORD-1001, it arrived damaged
+
+Conversations (chat and assist) are stored in SQLite at `apps/server/jev-chat.db`
+(`DATABASE_PATH` is relative to `apps/server`). Delete the file to start over.
 
 ```sh
 pnpm test          # unit tests; no network or API keys needed
@@ -103,13 +126,16 @@ locale settings you can configure.
 ```mermaid
 flowchart TD
   User([User]) -->|types or clicks| Chat
+  User -->|left or right pane| Assist
 
   subgraph App[Web app]
     Chat[Chat]
+    Assist[Assist]
     Inspector[Inspector]
   end
 
   Chat -->|message or button| Server[Server]
+  Assist -->|left line, right ask, or button| Server
   DB[(Database)] -->|conversation state| Server
   Server -->|reply, state and trace| DB
   Server -->|asks questions| Jev{{Jev}}
@@ -117,12 +143,13 @@ flowchart TD
   Server -->|calls a tool| Tools
   Tools -->|returns data| Server
   Server -->|reply and card| Chat
+  Server -->|right-pane reply or silence| Assist
   Server -->|every decision| Inspector
 
   subgraph Tools[Tools]
     direction LR
-    Weather ~~~ Units[Units and maths] ~~~ Wikipedia ~~~ Recipes
-    Search[Web search] ~~~ Todoist ~~~ Home[Home Assistant]
+    Weather ~~~ Units[Units and maths] ~~~ Wikipedia ~~~ Recipes ~~~ Orders
+    Search[Web search] ~~~ Todoist ~~~ Home[Home Assistant] ~~~ Identity
   end
 ```
 
@@ -265,7 +292,9 @@ flowchart LR
 `buildRequest` in `turn/request.ts` asks every tool's questions in one round trip, before it knows
 which tool will be used. The code reads the answers for the tool that was picked and ignores the
 rest, and the inspector greys those out. When the message answers a pending question or comes from
-a tool button, the tool is already known and the "which tool?" answer is ignored.
+a tool button, the tool is already known and the "which tool?" answer is ignored. Assist's
+unprompted request is `buildAssistRequest`: `copilot_move` and `observation` instead of
+`request_kind`, and only the CS adapters.
 
 The options come from `buildPools` in `apps/server/src/jev/pools.ts`: date phrases, word spans
 and numbers from the message; titles and items ("the first one") from the newest result; numbers
@@ -351,6 +380,63 @@ subdivisions in `places.txt` (compared without case or accents), plus shapes lik
 "Lake …" and "… County". The same check keeps spell check off place names, lets a follow-up swap
 one place for another, and keeps places out of the people list.
 
+## Assist
+
+**Assist** (`+ New assist`, `/a/:id`) is a two-pane desktop layout on the same server. Below the
+`lg` breakpoint the page asks you to widen the window.
+
+The **left** pane is one composer with a Customer / Service rep toggle; both speakers share one
+thread. The **right** pane is titled Assistant: the service rep can type there, confirm refunds,
+and open the inspector on a right-pane reply. Both panes start empty. The sidebar lists chat and
+assist together, with an Assist badge.
+
+After every left-pane line, Jev picks among stay silent, a canned observation, or a
+customer-service tool. Only `identity.verify_identity`, `orders.get_order`, and
+`orders.initiate_refund` are available (`CS_ADAPTERS` in `tools/index.ts`).
+
+```mermaid
+flowchart TD
+  Left([Left-pane line]) --> Store[Append to the left transcript]
+  Store --> Hold{Refund confirm pending?}
+  Hold -->|yes| Silent[No right-pane message]
+  Hold -->|no| Jev{{Jev: silent, observe, or tool?}}
+  Jev --> Policy{Policy, in code}
+  Policy -->|silent and nothing missing| Silent
+  Policy -->|a required argument is missing| Ask["Ask the customer for that argument"]
+  Policy -->|observe| Note[Canned observation]
+  Policy -->|use_tool| Chain[Identity then order then refund confirm]
+  Chain -->|missing an argument| Ask
+  Chain -->|a read is ready| Call[Run the tool]
+  Chain -->|the refund is ready| Confirm[Confirm card on the right]
+  Note --> Right([Right pane])
+  Ask --> Right
+  Call --> Right
+  Confirm --> Right
+```
+
+This is `handleAssistTurn` in **`apps/server/src/turn/assist.ts`**. Left turns skip spell check
+and follow-up rewrites. A silent reply returns `{ silent: true }` and inserts no assistant row.
+
+**Observations** are templates. Jev picks a kind; for `wait` and `ask`, code fills in the next
+missing argument from `build()` (`Waiting for order_id.`, `Ask the customer for name and email.`).
+If Jev picks silent while something is still missing, code treats that as an ask. Silent is only
+allowed when there is nothing left to collect.
+
+**Unprompted tools** are a walk in code, not a `MultiStepAdapter`. When Jev picks `use_tool`, the
+server runs identity, then order lookup, and stops at a refund confirm card on the right. Reads
+run immediately; the write still needs an explicit confirm. One right-pane reply can bundle those
+cards plus a suggested line the rep can copy to the customer, built from the tool results
+(`assist-copy.ts`).
+
+A **right-pane** message is a normal `handleTurn` limited to the CS adapters, so typing there
+runs that one request instead of walking the refund pipeline. Confirm and cancel buttons live on
+the right. While a confirm is pending, further left-pane lines are stored but stay silent.
+
+Jev's assist state is the left transcript (`LEFT_FOR_TURN` lines), pending, and tool results —
+not observations or copilot chit-chat (`describeAssistState` in `turn/request.ts`). Sessions use
+the same SQLite `conversations` and `messages` tables as chat (`kind` `assist`, `pane`
+`left`/`right`, roles `customer` / `service_rep` on the left).
+
 ## Adding a tool
 
 Each tool is an adapter, one object per tool, in `apps/server/src/tools/<server>/`, with one folder
@@ -397,7 +483,8 @@ To send and show different things, read the answer with `choice`/`candidate` and
 its default, the trace credits the code (`default`) rather than Jev.
 
 The sample assumes `myserver` is already a `ServerId`. Then add the adapter to the list in
-`tools/index.ts`. To add a whole MCP server, you also need an entry in
+`tools/index.ts`. Customer-service tools Assist may run unprompted also go on `CS_ADAPTERS` in
+that file. To add a whole MCP server, you also need an entry in
 `SERVERS` (`mcp/clients.ts`) and a new member of `ServerId` + `SERVER_LABELS` (`shared/servers.ts`).
 
 Adapters are tested without Jev or a network: `tools/kit/testkit.ts` fakes Jev's option picks, so a
@@ -428,6 +515,8 @@ apps/server/
       questions.ts  question builders and answer readers
     turn/
       turn.ts       the policy: run, ask, confirm, offer a choice, or decline
+      assist.ts     two-pane copilot: observe the left transcript, chain CS tools
+      assist-copy.ts  observation kinds (wait/ask fill the missing argument) and post-tool copy lines
       request.ts    the main request: the conversation as Jev sees it, and every question
       execute.ts    call the tool (or drive a multi-step one) and present the result
       outcome.ts    the reply type a turn returns
@@ -447,14 +536,15 @@ apps/web/src/
   queries.ts            TanStack Query hooks for conversations, tools and turns
   store.ts              UI preferences (panels, spell check), kept in localStorage
   jevTrace.ts           totals across a turn's Jev requests
-  routes/               the layout with the tools sidebar, and the new-chat page
+  routes/               the layout with the tools sidebar, new-chat, and new-assist
   features/chat/        the conversation
+  features/assist/      two-pane customer / assistant view
   features/inspector/   the trace viewer
   components/cards/     reply cards, behind a registry
   components/ui/        generic UI pieces
 packages/
   mcp-kit/          helpers the MCP servers share
-  mcp-*/            four MCP servers written for this demo: weather, units, wiki, recipes
+  mcp-*/            MCP servers written for this demo: weather, units, wiki, recipes, orders, identity
 ```
 
 ## Notes
@@ -496,9 +586,9 @@ talk and requests no tool covers get a fixed reply listing what it can do.
 
 ### What if it picks the wrong thing and changes something?
 
-It can: routing is a model's judgment, not a rule. So adding or completing a Todoist task, and any
-Home Assistant action that could reach a lock, a cover or an unknown device, shows a confirm card
-with its arguments first. Only a yes runs it.
+It can: routing is a model's judgment, not a rule. So adding or completing a Todoist task, opening
+a refund, and any Home Assistant action that could reach a lock, a cover or an unknown device,
+shows a confirm card with its arguments first. Only a yes runs it.
 
 ### "No hallucinations", really?
 
@@ -514,8 +604,9 @@ maths and unit conversions go to the units tool, and dates are worked out in cod
 
 ### Can it handle compound requests, like "turn the light green, then red after 5 seconds"?
 
-Not yet. Each message runs one tool, and there's no timer tool. Adding one is an adapter, but
-splitting one message into several commands would need its own step before Jev.
+Chat still runs one tool per message, and there's no timer tool. Assist's unprompted left turns
+are the exception: code walks identity → order lookup and stops at refund confirmation when the
+inputs are ready. Splitting an arbitrary "do A then B" in chat would still need its own step.
 
 ### Isn't this just Siri? Every response is pre-coded.
 
@@ -527,7 +618,8 @@ tool is one adapter ([Adding a tool](#adding-a-tool)).
 ### Is it built on LangChain or an agent framework?
 
 No. The pipeline is plain TypeScript: a Hono server, the MCP SDK for the tools, and the TypeSafe SDK
-for Jev. Each turn starts in `handleTurn` (`turn/turn.ts`).
+for Jev. Chat turns start in `handleTurn` (`turn/turn.ts`); Assist left turns start in
+`handleAssistTurn` (`turn/assist.ts`).
 
 ### Can I run it?
 
@@ -589,25 +681,3 @@ The explainer video [wtf is jev?](https://www.youtube.com/watch?v=QbYBRjOaGOo),
 - [Open-Meteo](https://open-meteo.com/), the
   [MediaWiki Action API](https://www.mediawiki.org/wiki/API:Main_page) and
   [TheMealDB](https://www.themealdb.com/api.php)
-
-## Contributing
-
-This repo is a demo and proof of concept. If you find a correctness issue or a clear error, open an
-issue and I'm happy to discuss it, but I won't accept PRs for new features. To add features, fork
-the repo or point your agent at it for inspiration.
-
-## License
-
-The code is [MIT](LICENSE). The data the tools fetch comes with its own terms:
-
-- Weather data from [Open-Meteo](https://open-meteo.com/) under
-  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); its free API is for non-commercial use.
-  Place lookup uses Open-Meteo's geocoding, which is based on [GeoNames](https://www.geonames.org/)
-  (CC BY 4.0).
-- Article text from [Wikipedia](https://en.wikipedia.org/) under
-  [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Each quote links to its
-  article, and the test fixtures in `packages/mcp-wiki/src/fixtures/` are Wikipedia wikitext under
-  the same licence.
-- Recipes from [TheMealDB](https://www.themealdb.com/api.php). The default test key `1` is for
-  development and educational use; get your own key for anything else.
-- Brave Search and Todoist are used through their own MCP servers and your own accounts.

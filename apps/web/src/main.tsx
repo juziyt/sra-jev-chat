@@ -4,8 +4,10 @@ import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 
 import "./index.css";
+import { AssistPage } from "./features/assist/AssistPage.tsx";
 import { ChatPage } from "./features/chat/ChatPage.tsx";
 import { Layout } from "./routes/Layout.tsx";
+import { NewAssist } from "./routes/NewAssist.tsx";
 import { NewChat } from "./routes/NewChat.tsx";
 
 const queryClient = new QueryClient({
@@ -18,6 +20,8 @@ const router = createBrowserRouter([
     children: [
       { path: "/", element: <NewChat /> },
       { path: "/c/:id", element: <ChatPage /> },
+      { path: "/assist", element: <NewAssist /> },
+      { path: "/a/:id", element: <AssistPage /> },
     ],
   },
 ]);

@@ -47,7 +47,11 @@ export async function fetchMessages(id: string): Promise<MessagesResponse> {
 export function useCreateConversation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => unwrap(api.conversations.$post()),
+    mutationFn: async (kind: "chat" | "assist" = "chat") => {
+      const res = await api.conversations.$post({ json: { kind } });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.conversations }),
   });
 }
@@ -62,19 +66,32 @@ export function useDeleteConversation() {
 }
 
 /** The user's own bubble, shown before the server has stored it. Replaced on the next refetch. */
-function optimistic(id: string, text: string): ChatMessage {
+function optimistic(
+  id: string,
+  text: string,
+  extra: { role: ChatMessage["role"]; pane: ChatMessage["pane"] },
+): ChatMessage {
   return {
     id: `optimistic-${Date.now()}`,
     conversationId: id,
-    role: "user",
+    role: extra.role,
+    pane: extra.pane,
     text,
     card: null,
     trace: null,
     createdAt: new Date().toISOString(),
-  } satisfies Record<keyof ChatMessage, unknown> as ChatMessage;
+  } satisfies Record<keyof ChatMessage, unknown>;
 }
 
-type TurnRequest = { text: string } | { action: TurnAction };
+type TurnRequest =
+  | { text: string; pane?: "left" | "right"; speaker?: "customer" | "service_rep" }
+  | { action: TurnAction };
+
+function bubbleFor(input: TurnRequest): { role: ChatMessage["role"]; pane: ChatMessage["pane"] } {
+  if (!("text" in input) || !input.pane) return { role: "user", pane: "right" };
+  if (input.pane === "left") return { role: input.speaker ?? "customer", pane: "left" };
+  return { role: "service_rep", pane: "right" };
+}
 
 /** Send a message or a button action; shows the user's bubble immediately. */
 export function useSendTurn(id: string) {
@@ -86,7 +103,12 @@ export function useSendTurn(id: string) {
         "text" in input
           ? await api.conversations[":id"].messages.$post({
               param: { id },
-              json: { text: input.text, spellcheck: useUi.getState().spellcheck },
+              json: {
+                text: input.text,
+                spellcheck: useUi.getState().spellcheck,
+                pane: input.pane,
+                speaker: input.speaker,
+              },
             })
           : await api.conversations[":id"].actions.$post({ param: { id }, json: input.action });
       if (!res.ok) throw new Error(await res.text());
@@ -95,8 +117,9 @@ export function useSendTurn(id: string) {
     onMutate: async (input) => {
       await qc.cancelQueries({ queryKey: keys.messages(id) });
       const label = "text" in input ? input.text : actionLabel(input.action);
+      const extra = bubbleFor(input);
       qc.setQueryData<MessagesResponse>(keys.messages(id), (old) =>
-        old ? { ...old, messages: [...old.messages, optimistic(id, label)] } : old,
+        old ? { ...old, messages: [...old.messages, optimistic(id, label, extra)] } : old,
       );
     },
     onSuccess: (assistant) => {

@@ -3,8 +3,8 @@ import { useNavigate } from "react-router";
 
 import { useCreateConversation } from "../queries.ts";
 
-/** Creates a conversation once on mount and redirects to it, showing a spinner meanwhile. */
-export function NewChat() {
+/** Creates an assist session once on mount and redirects to it. */
+export function NewAssist() {
   const create = useCreateConversation();
   const navigate = useNavigate();
   const started = useRef(false);
@@ -12,7 +12,7 @@ export function NewChat() {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    void create.mutateAsync("chat").then((c) => navigate(`/c/${c.id}`, { replace: true }));
+    void create.mutateAsync("assist").then((c) => navigate(`/a/${c.id}`, { replace: true }));
   }, [create, navigate]);
 
   return (

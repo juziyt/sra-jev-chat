@@ -1,3 +1,5 @@
+import type { EntryType } from "@typesafe-ai/sdk";
+
 import { CLOSE_MARGIN, CONFIDENT } from "../config.ts";
 import { askJev, jevConfigured } from "../jev/client.ts";
 import { buildPools } from "../jev/pools.ts";
@@ -24,10 +26,18 @@ import {
 import { describeArgs, execute, isDestructive } from "./execute.ts";
 import type { TurnOutput, UntimedTurn } from "./outcome.ts";
 import { correctSpelling, resolveFollowUp } from "./preprocess/preprocess.ts";
-import { buildRequest, describeState } from "./request.ts";
+import { describeState, buildRequest } from "./request.ts";
 
 export type { TurnOutput } from "./outcome.ts";
 export { JEV_MODEL } from "../jev/client.ts";
+
+/** Extra turn options: which adapters Jev may pick (defaults to every registered tool). */
+export interface TurnOptions {
+  adapters?: Adapter[];
+  describe?: (message: string, state: ConversationState) => EntryType;
+  /** Text used to build candidate pools; defaults to the latest message. */
+  poolText?: string;
+}
 
 export type TurnInput =
   | {
@@ -39,9 +49,9 @@ export type TurnInput =
   | { kind: "action"; type: "confirm" | "cancel" }
   | { kind: "action"; type: "pick"; value: string };
 
-function capabilitiesCard(): Card {
+function capabilitiesCard(adapters: Adapter[]): Card {
   const byServer = new Map<ServerId, string[]>();
-  for (const a of ADAPTERS) {
+  for (const a of adapters) {
     byServer.set(a.server, [...(byServer.get(a.server) ?? []), ...a.examples.slice(0, 1)]);
   }
   return {
@@ -70,15 +80,25 @@ const UNSUPPORTED = "Sorry, I can't do that yet. Here's what I can help with:";
  * Handle one typed message or button click: decide whether to run a tool, ask, confirm, offer a
  * choice, or just reply, and return the reply with its new state and trace.
  */
-export async function handleTurn(input: TurnInput, state: ConversationState): Promise<TurnOutput> {
+export async function handleTurn(
+  input: TurnInput,
+  state: ConversationState,
+  opts: TurnOptions = {},
+): Promise<TurnOutput> {
   const started = performance.now();
   const finish = (out: UntimedTurn): TurnOutput => ({
     ...out,
     trace: { ...out.trace, totalMs: Math.round(performance.now() - started) },
   });
+  const adapters = opts.adapters ?? ADAPTERS;
 
   if (input.kind === "message") {
-    return handleMessage(input.text, state, started, { spellcheck: input.spellcheck });
+    return handleMessage(input.text, state, started, {
+      spellcheck: input.spellcheck,
+      adapters,
+      describe: opts.describe,
+      poolText: opts.poolText,
+    });
   }
 
   const pending = state.pending;
@@ -95,6 +115,9 @@ export async function handleTurn(input: TurnInput, state: ConversationState): Pr
   if (input.type === "pick" && pending.type === "choose" && pending.options.includes(input.value)) {
     return handleMessage(pending.message, { ...state, pending: undefined }, started, {
       forcedTool: input.value,
+      adapters,
+      describe: opts.describe,
+      poolText: opts.poolText,
     });
   }
   return finish({
@@ -140,7 +163,19 @@ async function handleMessage(
   originalMessage: string,
   state: ConversationState,
   started: number,
-  { forcedTool, spellcheck = true }: { forcedTool?: string; spellcheck?: boolean } = {},
+  {
+    forcedTool,
+    spellcheck = true,
+    adapters = ADAPTERS,
+    describe = describeState,
+    poolText,
+  }: {
+    forcedTool?: string;
+    spellcheck?: boolean;
+    adapters?: Adapter[];
+    describe?: (message: string, state: ConversationState) => EntryType;
+    poolText?: string;
+  } = {},
 ): Promise<TurnOutput> {
   let spelling: SpellingTrace | undefined;
   let followUp: FollowUpTrace | undefined;
@@ -178,9 +213,9 @@ async function handleMessage(
     }
   }
 
-  const pools = buildPools(message, state, homeTargetPool(state));
-  const { questions, toolKeys } = buildRequest(pools);
-  const answer = await askJev(describeState(message, state), questions);
+  const pools = buildPools(poolText ?? message, state, homeTargetPool(state));
+  const { questions, toolKeys } = buildRequest(pools, adapters);
+  const answer = await askJev(describe(message, state), questions);
   const base = { jev: answer.trace, optionLabels: answer.optionLabels };
 
   if (!answer.ok) {
@@ -242,7 +277,7 @@ async function handleMessage(
     return reply(
       kind === "chat" ? chatReply(message) : UNSUPPORTED,
       { outcome: kind, reason: `Request kind is ${kind}`, requestKind: kind },
-      { card: capabilitiesCard() },
+      { card: capabilitiesCard(adapters) },
     );
   }
 
@@ -256,7 +291,7 @@ async function handleMessage(
     reason = "User picked this tool from the buttons";
   } else if (pending?.type === "ask" && kind === "answers_pending") {
     adapter = adapterById(pending.toolId);
-    partial = pending.partialArgs;
+    partial = { ...pending.partialArgs, __answer: message };
     reason = "Message answers the pending question";
   } else {
     used.add("tool");
@@ -305,7 +340,7 @@ async function handleMessage(
     return reply(
       UNSUPPORTED,
       { outcome: "unsupported", reason: "No tool fits", requestKind: kind, toolConfidence },
-      { card: capabilitiesCard() },
+      { card: capabilitiesCard(adapters) },
     );
   }
 

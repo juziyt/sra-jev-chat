@@ -34,7 +34,9 @@ export type Outcome =
   | "chat"
   | "unsupported"
   | "cancel"
-  | "error";
+  | "error"
+  | "silent"
+  | "observe";
 
 export interface JevTrace {
   request: { model: string; state: unknown; questions: Record<string, JevQuestionJson> };

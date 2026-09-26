@@ -22,6 +22,8 @@ const OUTCOME_BADGE: Record<Outcome, string> = {
   unsupported: "badge-ghost",
   cancel: "badge-ghost",
   error: "badge-error",
+  silent: "badge-ghost",
+  observe: "badge-info",
 };
 
 /**
@@ -39,11 +41,29 @@ export function MessageBubble(props: {
   onAction: (a: CardAction) => void;
 }) {
   const { message, selected, isLatest, pending, busy, onSelect, onAction } = props;
+  const pane = message.pane ?? "right";
+  const fromRepOrCustomer =
+    message.role === "user" ||
+    message.role === "customer" ||
+    (message.role === "service_rep" && pane === "right");
 
-  if (message.role === "user") {
+  if (fromRepOrCustomer) {
+    let label: string | undefined;
+    if (message.role === "customer") label = "Customer";
+    else if (message.role === "service_rep") label = "Service rep";
     return (
       <div className="chat chat-end">
+        {label && <div className="chat-header mb-1 text-xs opacity-60">{label}</div>}
         <div className="chat-bubble chat-bubble-primary">{message.text}</div>
+      </div>
+    );
+  }
+
+  if (message.role === "service_rep") {
+    return (
+      <div className="chat chat-start">
+        <div className="chat-header mb-1 text-xs opacity-60">Service rep</div>
+        <div className="chat-bubble bg-base-300">{message.text}</div>
       </div>
     );
   }

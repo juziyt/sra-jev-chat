@@ -82,6 +82,23 @@ export type Card =
       youtube?: string;
       source?: string;
     }
-  | { type: "error"; message: string };
+  | {
+      type: "order";
+      orderId: string;
+      status: string;
+      placedAt: string;
+      items: { name: string; quantity: number; price: number }[];
+      subtotal: number;
+      tax: number;
+      shippingCost: number;
+      total: number;
+      currency: string;
+      destination: string;
+      tracking?: string;
+      eta?: string;
+    }
+  | { type: "error"; message: string }
+  | { type: "suggestion"; text: string }
+  | { type: "bundle"; cards: Card[] };
 
 export type CardType = Card["type"];

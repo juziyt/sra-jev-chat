@@ -14,6 +14,12 @@ export const HISTORY_FOR_TURN = 4;
 /** Tool results kept for follow-ups that refer back to them. */
 export const RESULTS_KEPT = 3;
 
+/** Assist left-pane lines kept on conversation state. */
+export const LEFT_KEPT = 40;
+
+/** Assist left-pane lines sent with the copilot request. */
+export const LEFT_FOR_TURN = 20;
+
 /** Turns sent with the spelling request. */
 export const HISTORY_FOR_PREPROCESSING = 2;
 
